@@ -55,17 +55,26 @@ const boolean  switchOnWhenLocked    = false,
  */
 
 // Sekunden zwischen zwei Keep-Alive-Paketen bei einer ungenutzen Verbindung
-#define        KA_IDLE_S    600
+#define        KA_IDLE_S                           600
 // Sekunden zwischen zwei (unbestätigten) Keep-Alive-Paketen
-#define        KA_INTERVAL_S 10
+#define        KA_INTERVAL_S                       10
 // Anzahl von unbestätigten Keep-Alive-Paketen, nach denen die Verbindung geschlossen wird
-#define        KA_RETRY_COUNT  10
+#define        KA_RETRY_COUNT                      10
 // Wartezeit in Sekunden vor dem Neuaufbau einer geschlossenen Verbindung
-#define        CONNECTION_LOST_DELAY_S 10
+#define        CONNECTION_LOST_DELAY_S             10
 // Maximale Zeit im Millisekunden, nach der eine Bestätigung der neu aufgebauten Verbindung vom EIBD/KNXD kommen muss
-#define        CONNECTION_CONFIRMATION_TIMEOUT_MS 500
+#define        CONNECTION_CONFIRMATION_TIMEOUT_MS  500
 // Entprellzeit in Millisekunden für den Schaltknopf
-#define        BUTTON_DEBOUNCING_TIME_MS 100
+#define        BUTTON_DEBOUNCING_TIME_MS           100
+
+// LED wird parallel zum Relais (welches eine zusätzliche LED enthält) geschaltet
+#define        LED_SHOWS_RELAY_STATUS              1
+// LED blinkt bei bestehender EIBD/KNXD-Verbindung
+#define        LED_BLINKS_IF_CONNECTED             0
+// Zeit in Millisekunden, welche die LED während des Blinkens ausgeschaltet ist
+#define        LED_BLINK_OFF_TIME_MS               900
+// Zeit in Millisekunden, welche die LED während des Blinkens eingeschaltet ist
+#define        LED_BLINK_ON_TIME_MS                100
 
 const uint8_t  gpioLed    = 13,
                gpioRelay  = 12,
@@ -85,7 +94,8 @@ const uint8_t  gaSwitchHex[]     = {(gaSwitch[0] << 3) + gaSwitch[1], gaSwitch[2
 boolean        connectionConfirmed = false,
                lockActive          = false,
                buttonPressed       = false,
-               relayStatus         = false;
+               relayStatus         = false,
+               ledBlinkStatus      = false;
 
 uint8_t        messageLength = 0,
                messageResponse[32];
@@ -93,14 +103,15 @@ uint8_t        messageLength = 0,
 uint32_t       knxdConnectionCount         = 0,
                
 // Variablen zur Zeitmessung
-               lastMillis                  = 0,
+               currentMillis               = 0,
                millisOverflows             = 0,
                buttonPressedMillis         = 0,
                connectionEstablishedMillis = 0,
-               connectionFailedMillis      = 0;
+               connectionFailedMillis      = 0,
+               ledBlinkLastSwitch          = 0;
 
 // WLAN-Client
-WiFiClient     client;
+WiFiClient              client;
 
 // Webserver
 ESP8266WebServer        webServer(80);
@@ -264,10 +275,10 @@ void setup() {
 
 void loop() {
    // Überlauf von millis()
-   if (lastMillis > millis()){
+   if (currentMillis > millis()){
       millisOverflows++;
    }
-   lastMillis = millis();
+   currentMillis = millis();
    
    // Webserver 
    webServer.handleClient();
@@ -276,9 +287,9 @@ void loop() {
    // true = nicht gedrückt, false = gedrückt
    if (!digitalRead(gpioButton)){
       if (buttonPressedMillis == 0)
-         buttonPressedMillis = lastMillis;
+         buttonPressedMillis = currentMillis;
       
-      else if (!lockActive && !buttonPressed && (lastMillis - buttonPressedMillis) >= BUTTON_DEBOUNCING_TIME_MS) {
+      else if (!lockActive && !buttonPressed && (currentMillis - buttonPressedMillis) >= BUTTON_DEBOUNCING_TIME_MS) {
          buttonPressed = true;
          switchRelay(!relayStatus);      
       }      
@@ -290,15 +301,20 @@ void loop() {
    
    // KNX-Kommunikation
    knxLoop();
+   
+   // Falls eine Verbindung zum EIBD/KNXD aufgebaut ist, blinkt die LED sofern gewünscht.
+   if (LED_BLINKS_IF_CONNECTED)
+      ledBlink();
 }
 
 
 void knxLoop(){
    // Falls die Verbindung zum EIBD/KNXD unterbrochen ist, diese hier neu aufbauen
-   if (!client.connected() || (!connectionConfirmed && (lastMillis - connectionEstablishedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS)){
+   if (!client.connected() || (!connectionConfirmed && (currentMillis - connectionEstablishedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS)){
       // Beim ersten Ausfall der Verbindung
       if (connectionFailedMillis == 0){
-         connectionFailedMillis = lastMillis;
+         connectionFailedMillis = currentMillis;
+         connectionConfirmed = false;
          
          Serial.print("Verbindung unterbrochen. Neuaufbau in ");
          Serial.print(CONNECTION_LOST_DELAY_S);
@@ -306,11 +322,11 @@ void knxLoop(){
       }      
 
       // Pause zwischen zwei Verbindungsversuchen abgelaufen
-      if ((lastMillis - connectionFailedMillis) >= CONNECTION_LOST_DELAY_S * 1000){
+      if ((currentMillis - connectionFailedMillis) >= CONNECTION_LOST_DELAY_S * 1000){
          if (connectToKnxd())
             connectionFailedMillis = 0;
          else
-            connectionFailedMillis = lastMillis;
+            connectionFailedMillis = currentMillis;
       }
    }
    
@@ -392,8 +408,46 @@ void knxLoop(){
          
          // Für die nächste Nachricht zurücksetzen
          messageLength = 0;
-      }   
+      }
    }
+}
+
+
+void ledBlink(){
+   // Falls die Verbindung steht, die LED blinken lassen.
+   if (connectionConfirmed){
+      // LED-Blinkstatus ist zurzeit an
+      if (ledBlinkStatus) {
+         if ((currentMillis - ledBlinkLastSwitch) >= LED_BLINK_ON_TIME_MS){
+            // LED invertieren
+            if (LED_SHOWS_RELAY_STATUS && relayStatus)
+               digitalWrite(gpioLed, LOW);
+            else
+               digitalWrite(gpioLed, HIGH);
+            ledBlinkStatus = false;
+            ledBlinkLastSwitch = currentMillis;
+         }
+      }
+      // LED-Blinkstatus ist zurzeit aus
+      else {
+         if ((currentMillis - ledBlinkLastSwitch) >= LED_BLINK_OFF_TIME_MS){
+            // LED invertieren
+            if (LED_SHOWS_RELAY_STATUS && relayStatus)
+               digitalWrite(gpioLed, HIGH);
+            else
+               digitalWrite(gpioLed, LOW);
+            ledBlinkStatus = true;
+            ledBlinkLastSwitch = currentMillis;
+         }
+      }
+   }
+   // Die Verbindung ist unterbrochen, auf den Zustand des Relais setzen
+   else if (LED_SHOWS_RELAY_STATUS)
+      digitalWrite(gpioLed,  !relayStatus);
+   // Die LED wird nicht für den Relais-Status verwendet, ausschalten
+   else
+      digitalWrite(gpioLed,  HIGH);
+      
 }
 
 
@@ -428,9 +482,11 @@ void switchRelay(boolean on){
    else
       Serial.println("Steckdose ausgeschaltet");
    
-   digitalWrite(gpioLed,  !relayStatus);
    digitalWrite(gpioRelay, relayStatus);   
    
+   if (LED_SHOWS_RELAY_STATUS)
+      digitalWrite(gpioLed,  !relayStatus);
+      
    sendStatusGA();
 }
 
@@ -445,7 +501,7 @@ void sendStatusGA(){
 
 
 String getUptimeString(){
-   uint32_t secsUp  = millis() / 1000,      
+   uint32_t secsUp  = currentMillis / 1000,      
             seconds = secsUp % 60,
             minutes = (secsUp / 60) % 60,
             hours   = (secsUp / (60 * 60)) % 24,
