@@ -101,9 +101,14 @@ const boolean  switchOnWhenLocked    = false,
 #define        LED_BLINK_ON_TIME_MS                100
 
 const uint8_t  gpioLed      = 13,               
-               gpioButton   =  0,
+               gpioButton[] = {
+                                  0, // Button 1 (S20, Basic and 4CH [Pro])
+                                  9, // Button 2 (4CH [Pro]) 
+                                 10, // Button 3 (4CH [Pro])
+                                 14  // Button 4 (4CH [Pro])
+                              },
                gpioRelay[]  = {
-                                 12, // Relais 1 (S20 und Basic)
+                                 12, // Relais 1 (S20, Basic and 4CH [Pro])
                                   5, // Relais 2 (4CH [Pro])
                                   4, // Relais 3 (4CH [Pro])
                                  15  // Relais 4 (4CH [Pro])
@@ -135,7 +140,7 @@ const uint8_t  gaSwitchHex[][3]  = {{(gaSwitch[0][0] << 3) + gaSwitch[0][1], gaS
 
 boolean        connectionConfirmed = false,
                lockActive[]        = {false, false, false, false},
-               buttonPressed       = false,
+               buttonPressed[]     = {false, false, false, false},
                relayStatus[]       = {false, false, false, false},
                ledBlinkStatus      = false;
 
@@ -147,7 +152,7 @@ uint32_t       knxdConnectionCount         = 0,
 // Variablen zur Zeitmessung
                currentMillis               = 0,
                millisOverflows             = 0,
-               buttonPressedMillis         = 0,
+               buttonPressedMillis[]       = {0, 0, 0, 0},
                connectionEstablishedMillis = 0,
                connectionFailedMillis      = 0,
                ledBlinkLastSwitch          = 0;
@@ -262,21 +267,9 @@ void loop() {
    // Webserver 
    webServer.handleClient();
    
-   // Taste an der S20 prüfen
-   // true = nicht gedrückt, false = gedrückt
-   if (!digitalRead(gpioButton)){
-      if (buttonPressedMillis == 0)
-         buttonPressedMillis = currentMillis;
-      
-      else if (!buttonPressed && (currentMillis - buttonPressedMillis) >= BUTTON_DEBOUNCING_TIME_MS) {
-         buttonPressed = true;
-         switchRelay(0, !relayStatus[0]);      
-      }      
-   }
-   else {
-      buttonPressed = false;
-      buttonPressedMillis = 0;
-   }
+   // Check hardware buttons
+   for (uint8_t ch=0; ch<CHANNELS; ch++)
+      checkButton(ch);
    
    // KNX-Kommunikation
    knxLoop();
@@ -375,6 +368,23 @@ void knxLoop(){
          messageLength = 0;
       }
    }
+}
+
+void checkButton(uint8_t ch){
+   // true = nicht gedrückt, false = gedrückt
+   if (!digitalRead(gpioButton[ch])){
+      if (buttonPressedMillis[ch] == 0)
+         buttonPressedMillis[ch] = currentMillis;
+      
+      else if (!buttonPressed[ch] && (currentMillis - buttonPressedMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
+         buttonPressed[ch] = true;
+         switchRelay(ch, !relayStatus[ch]);
+      }      
+   }
+   else {
+      buttonPressed[ch] = false;
+      buttonPressedMillis[ch] = 0;
+   }   
 }
 
 
@@ -779,7 +789,7 @@ void setupWebServer(){
    webServer.on("/ch4/state", [](){webServer.send(200, "text/plain", relayStatus[3] ? "on" : "off");}); 
    
    webServer.on("/reboot", [](){
-      webServer.send(200, "text/html", htmlHeader + "Schaltsteckdose wird neugestartet...<p><a href=\"..\">Zur&uuml;ck</a></p>\n" + htmlFooter);
+      webServer.send(200, "text/html", htmlHeader + "Modul wird neugestartet...<p><a href=\"..\">Zur&uuml;ck</a></p>\n" + htmlFooter);
       delay(1000);
       ESP.restart();
    });
