@@ -1,9 +1,15 @@
 /*
- * Einstellungen für Sonoff S20 in der Arduino IDE:
+ * Notwendige Einstellungen in der Arduino IDE
  * 
  * Boardverwalter-URL: http://arduino.esp8266.com/stable/package_esp8266com_index.json
+ * 
+ * Sonoff S20
  * Board:              Generic ESP8266 Module
  * Flash Mode:         DOUT
+ * Flash Size:         1M (64K SPIFFS) [Notwendig für Updates über die Weboberfläche]
+ * 
+ * Sonoff 4CH
+ * Board:              Generic ESP8285 Module
  * Flash Size:         1M (64K SPIFFS) [Notwendig für Updates über die Weboberfläche]
  */
 
@@ -104,8 +110,9 @@ void setup() {
    Serial.print(HOST_DESCRIPTION);
    Serial.println(")\n");
    
-   for (uint8_t ch=0; ch<CHANNELS; ch++){   
-      pinMode(GPIO_RELAY[ch], OUTPUT);
+   for (uint8_t ch=0; ch<CHANNELS; ch++){
+      pinMode(GPIO_BUTTON[ch], INPUT_PULLUP);
+      pinMode(GPIO_RELAY[ch], OUTPUT);      
       digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
       
       Serial.print("Kanal ");
