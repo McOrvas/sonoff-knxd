@@ -104,8 +104,9 @@ void setup() {
    Serial.print(HOST_DESCRIPTION);
    Serial.println(")\n");
    
-   for (uint8_t ch=0; ch<CHANNELS; ch++){   
-      pinMode(GPIO_RELAY[ch], OUTPUT);
+   for (uint8_t ch=0; ch<CHANNELS; ch++){
+      pinMode(GPIO_BUTTON[ch], INPUT);
+      pinMode(GPIO_RELAY[ch], OUTPUT);      
       digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
       
       Serial.print("Kanal ");
