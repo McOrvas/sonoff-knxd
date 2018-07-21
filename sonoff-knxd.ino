@@ -66,6 +66,7 @@ uint32_t       knxdConnectionCount         = 0,
                currentMillis               = 0,
                millisOverflows             = 0,
                buttonPressedMillis[]       = {0, 0, 0, 0},
+               channelSwitchedOnMillis[]   = {0, 0, 0, 0},
                connectionEstablishedMillis = 0,
                connectionFailedMillis      = 0,
                ledBlinkLastSwitch          = 0;
@@ -181,11 +182,17 @@ void loop() {
    
    // Webserver 
    webServer.handleClient();
-   
-   // Check hardware buttons
-   for (uint8_t ch=0; ch<CHANNELS; ch++)
+
+   for (uint8_t ch=0; ch<CHANNELS; ch++){
+      // Check hardware buttons
       checkButton(ch);
-   
+
+      // Check if a channel has to be switched off by a timer
+      if (relayStatus[ch] && AUTO_OFF_TIMER_S[ch] > 0 && (currentMillis - channelSwitchedOnMillis[ch]) >= (AUTO_OFF_TIMER_S[ch] * 1000)){
+         switchRelay(ch, false, true);
+      }
+   }
+
    // KNX-Kommunikation
    knxLoop();
    
@@ -251,7 +258,7 @@ void knxLoop(){
                for (uint8_t ch=0; ch<CHANNELS; ch++){
                   // Schalten
                   if (messageResponse[4] == GA_SWITCH_BYTE[ch][0] && messageResponse[5] == GA_SWITCH_BYTE[ch][1]){
-                     switchRelay(ch, messageResponse[7] & 0x0F);      
+                     switchRelay(ch, messageResponse[7] & 0x0F, false);
                   }
                   
                   // Sperren
@@ -294,7 +301,7 @@ void checkButton(uint8_t ch){
       
       else if (!buttonPressed[ch] && (currentMillis - buttonPressedMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
          buttonPressed[ch] = true;
-         switchRelay(ch, !relayStatus[ch]);
+         switchRelay(ch, !relayStatus[ch], false);
       }      
    }
    else {
@@ -364,13 +371,12 @@ boolean connectToKnxd(){
    }
 }
 
-
-void switchRelay(uint8_t ch, boolean on){
+void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
    if (ch >= CHANNELS){
       Serial.print("Ungültiger Kanal: ");
       Serial.println(ch);      
    }
-   else if (lockActive[ch]){
+   else if (!overrideLock && lockActive[ch]){
       Serial.print("Schaltkommando wird ignoriert, Kanal ");
       Serial.print(ch+1);
       Serial.println(" ist gesperrt!");
@@ -381,13 +387,17 @@ void switchRelay(uint8_t ch, boolean on){
       Serial.print("Kanal ");
       Serial.print(ch + 1);
       
-      if (on)
+      if (on){
+         channelSwitchedOnMillis[ch] = currentMillis;
          Serial.println(" wird eingeschaltet");
-      else
+      }
+      else{
+         channelSwitchedOnMillis[ch] = 0;
          Serial.println(" wird ausgeschaltet");
+      }
       
-      digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);   
-      
+      digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
+
       // Die LED zeigt immer den Zustand des ersten Relais an
       if (LED_SHOWS_RELAY_STATUS)
          digitalWrite(GPIO_LED,  !relayStatus[0]);
@@ -408,9 +418,9 @@ void lockRelay(uint8_t ch, boolean lock){
          Serial.print(ch + 1);
          Serial.println(" wird gesperrt!");
          if (SWITCH_ON_WHEN_LOCKED)
-            switchRelay(ch, 1);
+            switchRelay(ch, 1, false);
          if (SWITCH_OFF_WHEN_LOCKED)
-            switchRelay(ch, 0);
+            switchRelay(ch, 0, false);
          
          lockActive[ch] = true;
       }                  
@@ -421,9 +431,9 @@ void lockRelay(uint8_t ch, boolean lock){
          Serial.print(ch + 1);
          Serial.println(" wird entsperrt!");
          if (SWITCH_ON_WHEN_UNLOCKED)
-            switchRelay(ch, 1);
+            switchRelay(ch, 1, false);
          if (SWITCH_OFF_WHEN_UNLOCKED)
-            switchRelay(ch, 0);
+            switchRelay(ch, 0, false);
       }
    }
 }
@@ -556,73 +566,73 @@ void setupWebServer(){
    });  
    
    webServer.on("/ch1/on", [](){
-      switchRelay(0, true);
+      switchRelay(0, true, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/on", [](){
-      switchRelay(1, true);
+      switchRelay(1, true, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/on", [](){
-      switchRelay(2, true);
+      switchRelay(2, true, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/on", [](){
-      switchRelay(3, true);
+      switchRelay(3, true, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/off", [](){
-      switchRelay(0, false);
+      switchRelay(0, false, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });   
    
    webServer.on("/ch2/off", [](){
-      switchRelay(1, false);
+      switchRelay(1, false, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/off", [](){
-      switchRelay(2, false);
+      switchRelay(2, false, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/off", [](){
-      switchRelay(3, false);
+      switchRelay(3, false, false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });  
    
    webServer.on("/ch1/toggle", [](){
-      switchRelay(0, !relayStatus[0]);
+      switchRelay(0, !relayStatus[0], false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/toggle", [](){
-      switchRelay(1, !relayStatus[1]);
+      switchRelay(1, !relayStatus[1], false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/toggle", [](){
-      switchRelay(2, !relayStatus[2]);
+      switchRelay(2, !relayStatus[2], false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/toggle", [](){
-      switchRelay(3, !relayStatus[3]);
+      switchRelay(3, !relayStatus[3], false);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });

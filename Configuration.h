@@ -69,6 +69,21 @@ const uint32_t CONNECTION_LOST_DELAY_S            =  10,
                CONNECTION_CONFIRMATION_TIMEOUT_MS = 500;
 
 
+/*
+ * ************************
+ * *** Auto off options ***
+ * ************************
+ */
+
+// Time after which the relay is automatically switched off again. A value of 0 deactivates the function.
+const uint32_t AUTO_OFF_TIMER_S[] = {
+                                     0, // Channel 1
+                                     0, // Channel 2
+                                     0, // Channel 3
+                                     0  // Channel 4
+                                    };
+
+
 /* 
  * ***************************
  * *** GPIO pin assignment ***
