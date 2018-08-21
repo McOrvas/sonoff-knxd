@@ -61,6 +61,8 @@ uint8_t        messageLength = 0,
                messageResponse[32];
 
 uint32_t       knxdConnectionCount         = 0,
+               receivedTelegrams           = 0,
+               interTelegramTimeouts       = 0,
                
 // Variablen zur Zeitmessung
                currentMillis               = 0,
@@ -69,7 +71,8 @@ uint32_t       knxdConnectionCount         = 0,
                channelSwitchedOnMillis[]   = {0, 0, 0, 0},
                connectionEstablishedMillis = 0,
                connectionFailedMillis      = 0,
-               ledBlinkLastSwitch          = 0;
+               ledBlinkLastSwitch          = 0,
+               lastTelegramReceivedMillis  = 0;
 
 // WLAN-Client
 WiFiClient              client;
@@ -170,6 +173,9 @@ void setup() {
    setupWebServer();
    
    connectToKnxd();
+   
+   // Initialize telegram timeout timer
+   lastTelegramReceivedMillis = millis(); 
 }
 
 
@@ -222,6 +228,19 @@ void knxLoop(){
          else
             connectionFailedMillis = currentMillis;
       }
+      
+      // Reset telegram timeout timer
+      lastTelegramReceivedMillis = currentMillis; 
+   }
+   
+   // Die Verbindung steht prinzipiell, aber seit NO_TELEGRAM_RECEIVED_TIMEOUT_MIN wurde kein Telegramm mehr empfangen und deshalb wird ein Timeout ausgelöst
+   else if (NO_TELEGRAM_RECEIVED_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= NO_TELEGRAM_RECEIVED_TIMEOUT_MIN * 60000){
+      client.stopAll();
+      interTelegramTimeouts++;
+      
+      Serial.print("Timeout: No telegram received during ");
+      Serial.print(NO_TELEGRAM_RECEIVED_TIMEOUT_MIN);
+      Serial.println(" minutes");
    }
    
    // Die Verbindung ist etabliert
@@ -237,7 +256,7 @@ void knxLoop(){
          // Prüfen, ob der initiale Verbindungsaufbau korrekt bestätigt wurde      
          if (!connectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
             Serial.println("EIBD/KNXD Verbindung hergestellt");
-            connectionConfirmed = true;         
+            connectionConfirmed = true;   
             knxdConnectionCount++;
             
             // Die Status-GA senden, sobald die Verbindung steht. Dadurch wird sie beim ersten Start nach einem Spannungsausfall gesendet.
@@ -248,6 +267,11 @@ void knxLoop(){
          if (     messageLength >= 8 // Ein Bit bzw. DPT 1.001
                && messageResponse[0] == EIB_GROUP_PACKET >> 8
                && messageResponse[1] == EIB_GROUP_PACKET & 0xFF){
+            
+            receivedTelegrams++;  
+            lastTelegramReceivedMillis = currentMillis;
+            //Serial.print("Received Telegrams: ");
+            //Serial.println(receivedTelegrams);
             
             // Schalten oder sperren
             if (      messageLength == 8 // Ein Bit bzw. DPT 1.001
@@ -365,7 +389,7 @@ boolean connectToKnxd(){
       client.keepAlive(KA_IDLE_S, KA_INTERVAL_S, KA_RETRY_COUNT);      
       client.write(KNXD_GROUP_CONNECTION_REQUEST, sizeof(KNXD_GROUP_CONNECTION_REQUEST));
       
-      connectionEstablishedMillis = millis();
+      connectionEstablishedMillis = millis();      
       
       return client.connected();
    }
@@ -481,7 +505,9 @@ String getWebServerMainPage() {
             ? "<div class=\"green\">Das Modul ist mit dem EIBD/KNXD verbunden!</div>\n"
             : "<div class=\"red\">Das Modul ist nicht mit dem EIBD/KNXD verbunden!</div>\n"
            ) +
-         "Bisher aufgebaute Verbindungen: " + String(knxdConnectionCount) + "\n"
+         "<span title=\"" + String(interTelegramTimeouts) + " telegram timeouts\">"
+         "Bisher aufgebaute Verbindungen: " + String(knxdConnectionCount) +
+         "</span>\n"
          "</p>\n"
          
          "<table>\n"
