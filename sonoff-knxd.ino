@@ -62,7 +62,8 @@ uint8_t        messageLength = 0,
 
 uint32_t       knxdConnectionCount         = 0,
                receivedTelegrams           = 0,
-               interTelegramTimeouts       = 0,
+               missingTelegramTimeouts     = 0,
+               incompleteTelegramTimeouts  = 0,
                
 // Variablen zur Zeitmessung
                currentMillis               = 0,
@@ -72,7 +73,8 @@ uint32_t       knxdConnectionCount         = 0,
                connectionEstablishedMillis = 0,
                connectionFailedMillis      = 0,
                ledBlinkLastSwitch          = 0,
-               lastTelegramReceivedMillis  = 0;
+               lastTelegramReceivedMillis  = 0,
+               lastTelegramHeaderReceivedMillis = 0;
 
 // WLAN-Client
 WiFiClient              client;
@@ -175,7 +177,7 @@ void setup() {
    connectToKnxd();
    
    // Initialize telegram timeout timer
-   lastTelegramReceivedMillis = millis(); 
+   lastTelegramReceivedMillis = millis();
 }
 
 
@@ -230,24 +232,26 @@ void knxLoop(){
       }
       
       // Reset telegram timeout timer
-      lastTelegramReceivedMillis = currentMillis; 
+      lastTelegramReceivedMillis = currentMillis;
    }
    
-   // Die Verbindung steht prinzipiell, aber seit NO_TELEGRAM_RECEIVED_TIMEOUT_MIN wurde kein Telegramm mehr empfangen und deshalb wird ein Timeout ausgelöst
-   else if (NO_TELEGRAM_RECEIVED_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= NO_TELEGRAM_RECEIVED_TIMEOUT_MIN * 60000){
+   // Die Verbindung steht prinzipiell, aber seit MISSING_TELEGRAM_TIMEOUT_MIN wurde kein Telegramm mehr empfangen und deshalb wird ein Timeout ausgelöst
+   else if (MISSING_TELEGRAM_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= MISSING_TELEGRAM_TIMEOUT_MIN * 60000){
       client.stopAll();
-      interTelegramTimeouts++;
+      missingTelegramTimeouts++;
       
       Serial.print("Timeout: No telegram received during ");
-      Serial.print(NO_TELEGRAM_RECEIVED_TIMEOUT_MIN);
+      Serial.print(MISSING_TELEGRAM_TIMEOUT_MIN);
       Serial.println(" minutes");
    }
    
    // Die Verbindung ist etabliert
    else {
       // Die Länge einer neuen Nachricht lesen
-      if (messageLength == 0 && client.available() >= 2)
+      if (messageLength == 0 && client.available() >= 2){
          messageLength = (((int) client.read()) << 8) + client.read();
+         lastTelegramHeaderReceivedMillis = currentMillis;
+      }
       
       // Die Nutzdaten einer Nachricht lesen
       if (messageLength > 0 && client.available() >= messageLength){
@@ -312,6 +316,17 @@ void knxLoop(){
          
          // Für die nächste Nachricht zurücksetzen
          messageLength = 0;
+      }
+      
+      // Incomplete telegram received timeout
+      else if (INCOMPLETE_TELEGRAM_TIMEOUT_MS > 0 && messageLength > 0 && lastTelegramHeaderReceivedMillis > 0 && (currentMillis - lastTelegramHeaderReceivedMillis) >= INCOMPLETE_TELEGRAM_TIMEOUT_MS){
+         client.stopAll();
+         incompleteTelegramTimeouts++;
+         messageLength = 0;
+         
+         Serial.print("Timeout: Incomplete received telegram after ");
+         Serial.print(INCOMPLETE_TELEGRAM_TIMEOUT_MS);
+         Serial.println(" ms");
       }
    }
 }
@@ -492,6 +507,11 @@ String getUptimeString(){
 
 
 String getWebServerMainPage() {
+   String connectionToolTip = "title=\"" 
+                              + String(knxdConnectionCount)        + " total connection" + String(knxdConnectionCount != 1 ? "s" : "") + " / " 
+                              + String(missingTelegramTimeouts)    + " missing telegram timeout" + String(missingTelegramTimeouts != 1 ? "s" : "") + " / " 
+                              + String(incompleteTelegramTimeouts) + " incomplete telegram timeout" + String(incompleteTelegramTimeouts != 1 ? "s" : "") + "\"";
+   
    return 
          HTML_HEADER + 
          
@@ -502,12 +522,9 @@ String getWebServerMainPage() {
          
          "<p>\n"
          + String(client.connected()
-            ? "<div class=\"green\">Das Modul ist mit dem EIBD/KNXD verbunden!</div>\n"
-            : "<div class=\"red\">Das Modul ist nicht mit dem EIBD/KNXD verbunden!</div>\n"
-           ) +
-         "<span title=\"" + String(interTelegramTimeouts) + " telegram timeouts\">"
-         "Bisher aufgebaute Verbindungen: " + String(knxdConnectionCount) +
-         "</span>\n"
+            ? "<div class=\"green\" " + connectionToolTip + ">Das Modul ist mit dem EIBD/KNXD verbunden!</div>\n"
+            : "<div class=\"red\" " + connectionToolTip + ">Das Modul ist nicht mit dem EIBD/KNXD verbunden!</div>\n"
+           ) +         
          "</p>\n"
          
          "<table>\n"

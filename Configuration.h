@@ -68,8 +68,9 @@ const uint32_t CONNECTION_LOST_DELAY_S            =  10,
 // Maximum time in milliseconds after which a confirmation of the newly established connection has to be received from the EIBD/KNXD
                CONNECTION_CONFIRMATION_TIMEOUT_MS = 500,
 // If no telegram was received during this time in minutes, the connection to the EIBD/KNXD will be reestablished. Set to 0 to disable this function.
-               NO_TELEGRAM_RECEIVED_TIMEOUT_MIN   = 0;
-
+               MISSING_TELEGRAM_TIMEOUT_MIN       = 0,
+// If a received telegram is not completed during this time, the connection to the EIBD/KNXD will be reestablished. Set to 0 to disable this function.
+               INCOMPLETE_TELEGRAM_TIMEOUT_MS     = 0;
 
 /*
  * ************************
