@@ -333,26 +333,32 @@ void knxLoop(){
 
 
 void checkButton(uint8_t ch){
-   // true = nicht gedrückt, false = gedrückt
-   if (!digitalRead(GPIO_BUTTON[ch])){
+   // true = released, false = pressed
+   if (digitalRead(GPIO_BUTTON[ch]) == BUTTON_INVERTED){
       if (buttonPressedMillis[ch] == 0)
          buttonPressedMillis[ch] = currentMillis;
       
-      else if (!buttonPressed[ch] && (currentMillis - buttonPressedMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
-         buttonPressed[ch] = true;
-         switchRelay(ch, !relayStatus[ch], false);
+      else if (buttonPressed[ch] == BUTTON_INVERTED && (currentMillis - buttonPressedMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
+         buttonPressed[ch] = !BUTTON_INVERTED;
+         if (BUTTON_TOGGLE)
+            switchRelay(ch, !relayStatus[ch], false);
+         else
+            switchRelay(ch, true, false);
       }      
    }
-   else {
-      buttonPressed[ch] = false;
+   else {      
+      if (!BUTTON_TOGGLE && relayStatus[ch] && buttonPressedMillis[ch] > 0)
+         switchRelay(ch, false, false);
+      
+      buttonPressed[ch] = BUTTON_INVERTED;
       buttonPressedMillis[ch] = 0;
-   }   
+   }
 }
 
 
 void ledBlink(){
    // Falls die Verbindung steht, die LED blinken lassen.
-   if (connectionConfirmed){
+   if (connectionConfirmed) {
       // LED-Blinkstatus ist zurzeit an
       if (ledBlinkStatus) {
          if ((currentMillis - ledBlinkLastSwitch) >= LED_BLINK_ON_TIME_MS){

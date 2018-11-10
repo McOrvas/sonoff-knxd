@@ -72,6 +72,7 @@ const uint32_t CONNECTION_LOST_DELAY_S            =  10,
 // If a received telegram is not completed during this time, the connection to the EIBD/KNXD will be reestablished. Set to 0 to disable this function.
                INCOMPLETE_TELEGRAM_TIMEOUT_MS     = 0;
 
+
 /*
  * ************************
  * *** Auto off options ***
@@ -107,8 +108,19 @@ const uint8_t  GPIO_LED      =   13,
                                  15  // Relay 4 (4CH [Pro])
                                };
 
+
+/* 
+ * ****************************
+ * *** Hardware button mode ***
+ * ****************************
+ */
+// True  = Toggle mode (the relay toggles at each pressure)
+// False = Switch mode (as long as the button is pressed, the relay switches)
+const boolean  BUTTON_TOGGLE             = true,
+// Inverts the button
+               BUTTON_INVERTED           = false;
 // Debounce time in milliseconds for the hardware button
-const uint32_t BUTTON_DEBOUNCING_TIME_MS = 100;
+const uint32_t BUTTON_DEBOUNCING_TIME_MS = 50;
 
 
 /* 
