@@ -47,21 +47,14 @@ const uint8_t  GA_SWITCH[][3] = {{31, 0,  0},  // Channel 1
                                  {31, 0,  8},  // Channel 3
                                  {31, 0, 11}}; // Channel 4
 
-// When a channel is being locked, it can be turned on or off.
-const boolean  SWITCH_ON_WHEN_LOCKED     = false,
-               SWITCH_OFF_WHEN_LOCKED    = false,
-               SWITCH_ON_WHEN_UNLOCKED   = false,
-               SWITCH_OFF_WHEN_UNLOCKED  = false;
-
-// The (WLAN) LED of the device will be used to show the status of channel 1
-const boolean  LED_SHOWS_RELAY_STATUS    = true,
-
-// LED blinks when the device is connected to the EIBD/KNXD
-               LED_BLINKS_WHEN_CONNECTED = false;
-// Off time in ms during blinking
-const uint32_t LED_BLINK_OFF_TIME_MS     = 900,
-// On time in ms during blinking
-               LED_BLINK_ON_TIME_MS      = 100;
+// When a channel is being (un)locked, it can be turned on or off.
+const boolean  SWITCH_ON_WHEN_LOCKED[]    = {false, false, false, false},
+               SWITCH_OFF_WHEN_LOCKED[]   = {false, false, false, false},
+               SWITCH_ON_WHEN_UNLOCKED[]  = {false, false, false, false},
+               SWITCH_OFF_WHEN_UNLOCKED[] = {false, false, false, false},
+               
+// The lock can be inverted (0 = lock / 1 = unlock)
+               LOCK_INVERTED[]            = {false, false, false, false};
 
 // Waiting time in seconds between a closed connection to the EIBD/KNXD will be reestablished
 const uint32_t CONNECTION_LOST_DELAY_S            =  10,
@@ -72,6 +65,21 @@ const uint32_t CONNECTION_LOST_DELAY_S            =  10,
 // If a received telegram is not completed during this time, the connection to the EIBD/KNXD will be reestablished. Set to 0 to disable this function.
                INCOMPLETE_TELEGRAM_TIMEOUT_MS     = 0;
 
+
+/*
+ * *******************
+ * *** LED options ***
+ * *******************
+ */
+// The (WLAN) LED of the device will be used to show the status of channel 1
+const boolean  LED_SHOWS_RELAY_STATUS    = true,
+
+// LED blinks when the device is connected to the EIBD/KNXD
+               LED_BLINKS_WHEN_CONNECTED = false;
+// Off time in ms during blinking
+const uint32_t LED_BLINK_OFF_TIME_MS     = 900,
+// On time in ms during blinking
+               LED_BLINK_ON_TIME_MS      = 100;
 
 /*
  * ************************
@@ -107,6 +115,14 @@ const uint8_t  GPIO_LED      =   13,
                                   4, // Relay 3 (4CH [Pro])
                                  15  // Relay 4 (4CH [Pro])
                                };
+
+
+/* 
+ * ****************************
+ * *** Relay type (NO / NC) ***
+ * ****************************
+ */
+const boolean RELAY_NORMALLY_OPEN[] = {true,  true,  true,  true};
 
 
 /* 

@@ -119,7 +119,11 @@ void setup() {
    for (uint8_t ch=0; ch<CHANNELS; ch++){
       pinMode(GPIO_BUTTON[ch], INPUT_PULLUP);
       pinMode(GPIO_RELAY[ch], OUTPUT);      
-      digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
+      
+      if (RELAY_NORMALLY_OPEN[ch])
+         digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
+      else
+         digitalWrite(GPIO_RELAY[ch], !relayStatus[ch]);
       
       Serial.print("Kanal ");
       Serial.print(ch + 1);      
@@ -441,7 +445,10 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
          Serial.println(" wird ausgeschaltet");
       }
       
-      digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
+      if (RELAY_NORMALLY_OPEN[ch])
+         digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
+      else
+         digitalWrite(GPIO_RELAY[ch], !relayStatus[ch]);
 
       // Die LED zeigt immer den Zustand des ersten Relais an
       if (LED_SHOWS_RELAY_STATUS)
@@ -458,14 +465,15 @@ void lockRelay(uint8_t ch, boolean lock){
       Serial.println(ch);      
    }
    else {      
-      if (lock){
+      if (lock ^ LOCK_INVERTED[ch]){
          Serial.print("Kanal ");
          Serial.print(ch + 1);
          Serial.println(" wird gesperrt!");
-         if (SWITCH_ON_WHEN_LOCKED)
-            switchRelay(ch, 1, false);
-         if (SWITCH_OFF_WHEN_LOCKED)
-            switchRelay(ch, 0, false);
+         
+         if (SWITCH_OFF_WHEN_LOCKED[ch])
+            switchRelay(ch, false, false);
+         else if (SWITCH_ON_WHEN_LOCKED[ch])
+            switchRelay(ch, true, false);
          
          lockActive[ch] = true;
       }                  
@@ -475,10 +483,11 @@ void lockRelay(uint8_t ch, boolean lock){
          Serial.print("Kanal ");
          Serial.print(ch + 1);
          Serial.println(" wird entsperrt!");
-         if (SWITCH_ON_WHEN_UNLOCKED)
-            switchRelay(ch, 1, false);
-         if (SWITCH_OFF_WHEN_UNLOCKED)
-            switchRelay(ch, 0, false);
+         
+         if (SWITCH_OFF_WHEN_UNLOCKED[ch])
+            switchRelay(ch, false, false);
+         else if (SWITCH_ON_WHEN_UNLOCKED[ch])
+            switchRelay(ch, true, false);
       }
    }
 }
