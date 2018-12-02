@@ -86,6 +86,7 @@ ESP8266HTTPUpdateServer httpUpdateServer;
 const String HTML_HEADER =  "<!DOCTYPE HTML>\n"
                             "<html>\n"
                             "<head>\n"
+                               "<meta charset=\"utf-8\"/>\n"
                                "<meta http-equiv=\"refresh\" content=\"15;URL=/\">\n"
                                "<style>\n"
                                   ".green {color:darkgreen; font-weight: bold;}\n"
