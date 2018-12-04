@@ -431,7 +431,7 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
       Serial.print(ch+1);
       Serial.println(" ist gesperrt!");
    }
-   else{
+   else if (relayStatus[ch] != on){
       relayStatus[ch] = on;
       
       Serial.print("Kanal ");
