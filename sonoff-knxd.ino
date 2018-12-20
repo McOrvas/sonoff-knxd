@@ -34,31 +34,18 @@
  * *************************
  */
 
-const uint8_t  GA_SWITCH_BYTE[][3] = {{(GA_SWITCH[0][0] << 3) + GA_SWITCH[0][1], GA_SWITCH[0][2]},
-                                      {(GA_SWITCH[1][0] << 3) + GA_SWITCH[1][1], GA_SWITCH[1][2]},
-                                      {(GA_SWITCH[2][0] << 3) + GA_SWITCH[2][1], GA_SWITCH[2][2]},
-                                      {(GA_SWITCH[3][0] << 3) + GA_SWITCH[3][1], GA_SWITCH[3][2]}},
-
-               GA_LOCK_BYTE[][3]   = {{(GA_LOCK[0][0] << 3) + GA_LOCK[0][1], GA_LOCK[0][2]},
-                                      {(GA_LOCK[1][0] << 3) + GA_LOCK[1][1], GA_LOCK[1][2]},
-                                      {(GA_LOCK[2][0] << 3) + GA_LOCK[2][1], GA_LOCK[2][2]},
-                                      {(GA_LOCK[3][0] << 3) + GA_LOCK[3][1], GA_LOCK[3][2]}},
-
-               GA_STATUS_BYTE[][3] = {{(GA_STATUS[0][0] << 3) + GA_STATUS[0][1], GA_STATUS[0][2]},
-                                      {(GA_STATUS[1][0] << 3) + GA_STATUS[1][1], GA_STATUS[1][2]},
-                                      {(GA_STATUS[2][0] << 3) + GA_STATUS[2][1], GA_STATUS[2][2]},
-                                      {(GA_STATUS[3][0] << 3) + GA_STATUS[3][1], GA_STATUS[3][2]}},
-
+const uint8_t  GA_SWITCH_COUNT = sizeof(GA_SWITCH[0]) / 3,
+               GA_LOCK_COUNT   = sizeof(GA_LOCK[0]) / 3,
                KNXD_GROUP_CONNECTION_REQUEST[] = {0x00, 0x05, EIB_OPEN_GROUPCON >> 8, EIB_OPEN_GROUPCON & 0xFF, 0x00, 0x00, 0x00};
+
+uint8_t        messageLength = 0,
+               messageResponse[32];
 
 boolean        connectionConfirmed = false,
                lockActive[]        = {false, false, false, false},
                buttonPressed[]     = {false, false, false, false},
                relayStatus[]       = {false, false, false, false},
                ledBlinkStatus      = false;
-
-uint8_t        messageLength = 0,
-               messageResponse[32];
 
 uint32_t       knxdConnectionCount         = 0,
                receivedTelegrams           = 0,
@@ -128,33 +115,45 @@ void setup() {
       
       Serial.print("Kanal ");
       Serial.print(ch + 1);      
-      Serial.print(" GA schalten: ");
-      Serial.print(GA_SWITCH[ch][0]);
-      Serial.print("/");
-      Serial.print(GA_SWITCH[ch][1]);
-      Serial.print("/");
-      Serial.print(GA_SWITCH[ch][2]);
+      Serial.print(" GAs schalten: ");
+      for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
+         if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0) {
+            Serial.print(GA_SWITCH[ch][i][0]);
+            Serial.print("/");
+            Serial.print(GA_SWITCH[ch][i][1]);
+            Serial.print("/");
+            Serial.print(GA_SWITCH[ch][i][2]);
+            Serial.print(" ");
+         }
+      }
       Serial.println();
       
       Serial.print("Kanal ");
       Serial.print(ch + 1);
-      Serial.print(" GA sperren:  ");
-      Serial.print(GA_LOCK[ch][0]);
-      Serial.print("/");
-      Serial.print(GA_LOCK[ch][1]);
-      Serial.print("/");
-      Serial.print(GA_LOCK[ch][2]);
+      Serial.print(" GAs sperren:  ");
+      for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
+         if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0) {
+            Serial.print(GA_LOCK[ch][0][0]);
+            Serial.print("/");
+            Serial.print(GA_LOCK[ch][0][1]);
+            Serial.print("/");
+            Serial.print(GA_LOCK[ch][0][2]);
+            Serial.print(" ");
+         }
+      }
       Serial.println();
-      
+
       Serial.print("Kanal ");
       Serial.print(ch + 1);
-      Serial.print(" GA Status:   ");
-      Serial.print(GA_STATUS[ch][0]);
-      Serial.print("/");
-      Serial.print(GA_STATUS[ch][1]);
-      Serial.print("/");
-      Serial.print(GA_STATUS[ch][2]);
-      Serial.println("\n");   
+      Serial.print(" GA  Status:   ");
+      if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0) {
+         Serial.print(GA_STATUS[ch][0]);
+         Serial.print("/");
+         Serial.print(GA_STATUS[ch][1]);
+         Serial.print("/");
+         Serial.print(GA_STATUS[ch][2]);
+      }
+      Serial.println("\n");
    }
    
    Serial.print("Verbinde mit WLAN '");
@@ -287,16 +286,23 @@ void knxLoop(){
                   &&  messageResponse[6] == 0x00
                   && (messageResponse[7] & 0x80) == 0x80){
                
-               // Die übertragene Gruppenadresse denen aller Kanäle vergleichen
+               // Die übertragene Gruppenadresse mit denen aller Kanäle vergleichen
                for (uint8_t ch=0; ch<CHANNELS; ch++){
-                  // Schalten
-                  if (messageResponse[4] == GA_SWITCH_BYTE[ch][0] && messageResponse[5] == GA_SWITCH_BYTE[ch][1]){
-                     switchRelay(ch, messageResponse[7] & 0x0F, false);
+                  for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
+                     // Schalten
+                     if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0
+                         && messageResponse[4] == (GA_SWITCH[0][i][0] << 3) + GA_SWITCH[0][i][1]
+                         && messageResponse[5] == GA_SWITCH[0][i][2]){
+                        switchRelay(ch, messageResponse[7] & 0x0F, false);
+                     }
                   }
-                  
-                  // Sperren
-                  else if (messageResponse[4] == GA_LOCK_BYTE[ch][0] && messageResponse[5] == GA_LOCK_BYTE[ch][1]){  
-                     lockRelay(ch, messageResponse[7] & 0x0F);                     
+                  for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
+                     // Sperren
+                     if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0
+                         && messageResponse[4] == (GA_LOCK[0][i][0] << 3) + GA_LOCK[0][i][1]
+                         && messageResponse[5] == GA_LOCK[0][i][2]){
+                        lockRelay(ch, messageResponse[7] & 0x0F);
+                     }
                   }
                }
             }
@@ -308,11 +314,12 @@ void knxLoop(){
                
                // Die übertragene Gruppenadresse denen aller Kanäle vergleichen
                for (uint8_t ch=0; ch<CHANNELS; ch++){
-                  if (messageResponse[4] == GA_STATUS_BYTE[ch][0] && messageResponse[5] == GA_STATUS_BYTE[ch][1]) {
+                  if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0
+                      && messageResponse[4] == (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1] && messageResponse[5] == GA_STATUS[ch][2]) {
                      Serial.print("Leseanforderung Status Kanal ");
                      Serial.println(ch+1);
             
-                     const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, GA_STATUS_BYTE[ch][0], GA_STATUS_BYTE[ch][1], 0x00, 0x40 | relayStatus[ch]};
+                     const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1], GA_STATUS[ch][2], 0x00, 0x40 | relayStatus[ch]};
                      client.write(groupValueResponse, sizeof(groupValueResponse));
                   }
                }
@@ -497,7 +504,7 @@ void lockRelay(uint8_t ch, boolean lock){
 void sendStatusGA(uint8_t ch){
    // Status-GA schreiben
    if (client.connected()){
-      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, GA_STATUS_BYTE[ch][0], GA_STATUS_BYTE[ch][1], 0x00, 0x80 | relayStatus[ch]};
+      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1], GA_STATUS[ch][2], 0x00, 0x80 | relayStatus[ch]};
       client.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
@@ -523,10 +530,29 @@ String getUptimeString(){
 
 
 String getWebServerMainPage() {
-   String connectionToolTip = "title=\"" 
-                              + String(knxdConnectionCount)        + " total connection" + String(knxdConnectionCount != 1 ? "s" : "") + " / " 
-                              + String(missingTelegramTimeouts)    + " missing telegram timeout" + String(missingTelegramTimeouts != 1 ? "s" : "") + " / " 
-                              + String(incompleteTelegramTimeouts) + " incomplete telegram timeout" + String(incompleteTelegramTimeouts != 1 ? "s" : "") + "\"";
+   const String connectionToolTip   = "title=\""
+                                      + String(knxdConnectionCount)        + " total connection" + String(knxdConnectionCount != 1 ? "s" : "") + " / "
+                                      + String(missingTelegramTimeouts)    + " missing telegram timeout" + String(missingTelegramTimeouts != 1 ? "s" : "") + " / "
+                                      + String(incompleteTelegramTimeouts) + " incomplete telegram timeout" + String(incompleteTelegramTimeouts != 1 ? "s" : "") + "\"";
+
+   String GA_SWITCH_STRING[CHANNELS],
+          GA_LOCK_STRING[CHANNELS],
+          GA_STATUS_STRING[CHANNELS];
+
+   for (uint8_t ch=0; ch<CHANNELS; ch++){
+      for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
+         if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0)
+            GA_SWITCH_STRING[ch] += String(GA_SWITCH[ch][i][0]) + "/" + String(GA_SWITCH[ch][i][1]) + "/" + String(GA_SWITCH[ch][i][2]) + "<br />";
+      }
+
+      for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
+         if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0)
+            GA_LOCK_STRING[ch] += String(GA_LOCK[ch][i][0]) + "/" + String(GA_LOCK[ch][i][1]) + "/" + String(GA_LOCK[ch][i][2]) + "<br />";
+      }
+
+      if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0)
+         GA_STATUS_STRING[ch] += String(GA_STATUS[ch][0]) + "/" + String(GA_STATUS[ch][1]) + "/" + String(GA_STATUS[ch][2]);
+   }
    
    return 
          HTML_HEADER + 
@@ -553,24 +579,24 @@ String getWebServerMainPage() {
          "</tr>\n"
          
          "<tr><td>Schalten</td>"
-         "<td>" + String(GA_SWITCH[0][0]) + "/" + String(GA_SWITCH[0][1]) + "/" + String(GA_SWITCH[0][2]) + "</td>"
-         + String(CHANNELS > 1 ? "<td>" + String(GA_SWITCH[1][0]) + "/" + String(GA_SWITCH[1][1]) + "/" + String(GA_SWITCH[1][2]) + "</td>" : "")
-         + String(CHANNELS > 2 ? "<td>" + String(GA_SWITCH[2][0]) + "/" + String(GA_SWITCH[2][1]) + "/" + String(GA_SWITCH[2][2]) + "</td>" : "")
-         + String(CHANNELS > 3 ? "<td>" + String(GA_SWITCH[3][0]) + "/" + String(GA_SWITCH[3][1]) + "/" + String(GA_SWITCH[3][2]) + "</td>" : "") +
+         "<td>" + GA_SWITCH_STRING[0] + "</td>"
+         + String(CHANNELS > 1 ? "<td>" + GA_SWITCH_STRING[1] + "</td>" : "")
+         + String(CHANNELS > 2 ? "<td>" + GA_SWITCH_STRING[2] + "</td>" : "")
+         + String(CHANNELS > 3 ? "<td>" + GA_SWITCH_STRING[3] + "</td>" : "") +
          "</tr>\n"
          
          "<tr><td>Sperren</td>"
-         "<td>" + String(GA_LOCK[0][0]) + "/" + String(GA_LOCK[0][1]) + "/" + String(GA_LOCK[0][2]) + "</td>"
-         + String(CHANNELS > 1 ? "<td>" + String(GA_LOCK[1][0]) + "/" + String(GA_LOCK[1][1]) + "/" + String(GA_LOCK[1][2]) + "</td>" : "")
-         + String(CHANNELS > 2 ? "<td>" + String(GA_LOCK[2][0]) + "/" + String(GA_LOCK[2][1]) + "/" + String(GA_LOCK[2][2]) + "</td>" : "")
-         + String(CHANNELS > 3 ? "<td>" + String(GA_LOCK[3][0]) + "/" + String(GA_LOCK[3][1]) + "/" + String(GA_LOCK[3][2]) + "</td>" : "") +
+         "<td>" + GA_LOCK_STRING[0] + "</td>"
+         + String(CHANNELS > 1 ? "<td>" + GA_LOCK_STRING[1] + "</td>" : "")
+         + String(CHANNELS > 2 ? "<td>" + GA_LOCK_STRING[2] + "</td>" : "")
+         + String(CHANNELS > 3 ? "<td>" + GA_LOCK_STRING[3] + "</td>" : "") +
          "</tr>\n"
          
          "<tr><td>Status</td>"
-         "<td>" + String(GA_STATUS[0][0]) + "/" + String(GA_STATUS[0][1]) + "/" + String(GA_STATUS[0][2]) + "</td>"
-         + String(CHANNELS > 1 ? "<td>" + String(GA_STATUS[1][0]) + "/" + String(GA_STATUS[1][1]) + "/" + String(GA_STATUS[1][2]) + "</td>" : "")
-         + String(CHANNELS > 2 ? "<td>" + String(GA_STATUS[2][0]) + "/" + String(GA_STATUS[2][1]) + "/" + String(GA_STATUS[2][2]) + "</td>" : "")
-         + String(CHANNELS > 3 ? "<td>" + String(GA_STATUS[3][0]) + "/" + String(GA_STATUS[3][1]) + "/" + String(GA_STATUS[3][2]) + "</td>" : "") +
+         "<td>" + GA_STATUS_STRING[0] + "</td>"
+         + String(CHANNELS > 1 ? "<td>" + GA_STATUS_STRING[1] + "</td>" : "")
+         + String(CHANNELS > 2 ? "<td>" + GA_STATUS_STRING[2] + "</td>" : "")
+         + String(CHANNELS > 3 ? "<td>" + GA_STATUS_STRING[3] + "</td>" : "") +
          "</tr>\n"
          "</table>\n"
          

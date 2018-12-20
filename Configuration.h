@@ -26,26 +26,31 @@ const uint32_t KNXD_PORT = 6720;
 // Number of active switching channels. 1 for S20 and Basic, 1-4 for 4CH (Pro)
 const uint8_t  CHANNELS = 1;
 
-/* Group addresses for all channels. Unused channels will be ignored.
+/* Group addresses for all channels. Unused channels and 0/0/0 GAs will be ignored.
+ * For the status exactly one GA must be defined per channel.
+ * For switch and lock multiple GAs can be defined, see example below.
+ * Remark: The number of GAs must be equal for all channels in switch respectively lock.
+ *         Fill unused GAs for other channels with 0/0/0.
+ * 
  * Example:
  * Channel 1 switch: 31/0/0
  * Channel 1 lock:   31/0/1
  * Channel 1 status: 31/0/2
  */
-const uint8_t  GA_SWITCH[][3] = {{31, 0,  0},  // Channel 1
-                                 {31, 0,  3},  // Channel 2
-                                 {31, 0,  6},  // Channel 3
-                                 {31, 0,  9}}, // Channel 4
+const uint8_t  GA_SWITCH[4][2][3] = {{{31, 0,  0}, {31, 1,  0}},  // Channel 1 (example with 2 GAs)
+                                     {{31, 0,  3}, {31, 1,  3}},  // Channel 2 (example with 2 GAs)
+                                     {{31, 0,  6}, {0,  0,  0}},  // Channel 3 (example with 1 GAs)
+                                     {{31, 0,  9}, {0,  0,  0}}}, // Channel 4 (example with 1 GAs)
 
-               GA_LOCK[][3]   = {{31, 0,  1},  // Channel 1
-                                 {31, 0,  4},  // Channel 2
-                                 {31, 0,  7},  // Channel 3
-                                 {31, 0, 10}}, // Channel 4
+               GA_LOCK[4][1][3]   = {{{31, 0,  1}},               // Channel 1 (example with 1 GA)
+                                     {{31, 0,  4}},               // Channel 2 (example with 1 GA)
+                                     {{31, 0,  7}},               // Channel 3 (example with 1 GA)
+                                     {{31, 0, 10}}},              // Channel 4 (example with 1 GA)
 
-               GA_STATUS[][3] = {{31, 0,  2},  // Channel 1
-                                 {31, 0,  5},  // Channel 2
-                                 {31, 0,  8},  // Channel 3
-                                 {31, 0, 11}}; // Channel 4
+               GA_STATUS[][3] =      {{31, 0,  2},                // Channel 1 (always exactly one address)
+                                      {31, 0,  5},                // Channel 2 (always exactly one address)
+                                      {31, 0,  8},                // Channel 3 (always exactly one address)
+                                      {31, 0, 11}};               // Channel 4 (always exactly one address)
 
 // When a channel is being (un)locked, it can be turned on or off.
 const boolean  SWITCH_ON_WHEN_LOCKED[]    = {false, false, false, false},
