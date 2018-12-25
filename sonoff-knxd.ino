@@ -56,7 +56,7 @@ uint32_t       knxdConnectionCount         = 0,
                currentMillis               = 0,
                millisOverflows             = 0,
                buttonPressedMillis[]       = {0, 0, 0, 0},
-               channelSwitchedOnMillis[]   = {0, 0, 0, 0},
+               autoOffTimerStartMillis[]   = {0, 0, 0, 0},
                connectionEstablishedMillis = 0,
                connectionFailedMillis      = 0,
                ledBlinkLastSwitch          = 0,
@@ -200,8 +200,13 @@ void loop() {
       checkButton(ch);
 
       // Check if a channel has to be switched off by a timer
-      if (relayStatus[ch] && AUTO_OFF_TIMER_S[ch] > 0 && (currentMillis - channelSwitchedOnMillis[ch]) >= (AUTO_OFF_TIMER_S[ch] * 1000)){
-         switchRelay(ch, false, true);
+      if (relayStatus[ch] && AUTO_OFF_TIMER_S[ch] > 0 && autoOffTimerStartMillis[ch] > 0 && (currentMillis - autoOffTimerStartMillis[ch]) >= (AUTO_OFF_TIMER_S[ch] * 1000)){
+         Serial.print("Auto off timer for channel ");
+         Serial.print(ch + 1);
+         Serial.println(" has expired!");
+         // Set value to 0 even if the channel cannot be switched off due to an active lock.
+         autoOffTimerStartMillis[ch] = 0;
+         switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK);
       }
    }
 
@@ -445,11 +450,11 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
       Serial.print(ch + 1);
       
       if (on){
-         channelSwitchedOnMillis[ch] = currentMillis;
+         autoOffTimerStartMillis[ch] = currentMillis;
          Serial.println(" wird eingeschaltet");
       }
       else{
-         channelSwitchedOnMillis[ch] = 0;
+         autoOffTimerStartMillis[ch] = 0;
          Serial.println(" wird ausgeschaltet");
       }
       

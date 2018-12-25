@@ -39,8 +39,8 @@ const uint8_t  CHANNELS = 1;
  */
 const uint8_t  GA_SWITCH[4][2][3] = {{{31, 0,  0}, {31, 1,  0}},  // Channel 1 (example with 2 GAs)
                                      {{31, 0,  3}, {31, 1,  3}},  // Channel 2 (example with 2 GAs)
-                                     {{31, 0,  6}, {0,  0,  0}},  // Channel 3 (example with 1 GAs)
-                                     {{31, 0,  9}, {0,  0,  0}}}, // Channel 4 (example with 1 GAs)
+                                     {{31, 0,  6}, {0,  0,  0}},  // Channel 3 (example with 1 GA)
+                                     {{31, 0,  9}, {0,  0,  0}}}, // Channel 4 (example with 1 GA)
 
                GA_LOCK[4][1][3]   = {{{31, 0,  1}},               // Channel 1 (example with 1 GA)
                                      {{31, 0,  4}},               // Channel 2 (example with 1 GA)
@@ -86,6 +86,7 @@ const uint32_t LED_BLINK_OFF_TIME_MS     = 900,
 // On time in ms during blinking
                LED_BLINK_ON_TIME_MS      = 100;
 
+
 /*
  * ************************
  * *** Auto off options ***
@@ -99,6 +100,9 @@ const uint32_t AUTO_OFF_TIMER_S[] = {
                                      0, // Channel 3
                                      0  // Channel 4
                                     };
+
+// Determine if the auto off timer should override an active lock or not.
+const boolean AUTO_OFF_TIMER_OVERRIDES_LOCK = true;
 
 
 /* 
