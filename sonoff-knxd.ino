@@ -165,6 +165,7 @@ void setup() {
    *   network-issues with your other WiFi-devices on your WiFi-network. */
    WiFi.mode(WIFI_STA);
    WiFi.hostname(HOST_NAME);
+   WiFi.persistent(false);
    WiFi.begin(SSID, PASSWORD);
    
    while (WiFi.status() != WL_CONNECTED) {
@@ -229,7 +230,7 @@ void knxLoop(){
          
          Serial.print("Verbindung unterbrochen. Neuaufbau in ");
          Serial.print(CONNECTION_LOST_DELAY_S);
-         Serial.println(" s.");         
+         Serial.println(" s.");
       }      
 
       // Pause zwischen zwei Verbindungsversuchen abgelaufen
@@ -306,7 +307,7 @@ void knxLoop(){
                      if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0
                          && messageResponse[4] == (GA_LOCK[0][i][0] << 3) + GA_LOCK[0][i][1]
                          && messageResponse[5] == GA_LOCK[0][i][2]){
-                        lockRelay(ch, messageResponse[7] & 0x0F);
+                        lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch]);
                      }
                   }
                }
@@ -478,7 +479,7 @@ void lockRelay(uint8_t ch, boolean lock){
       Serial.println(ch);      
    }
    else {      
-      if (lock ^ LOCK_INVERTED[ch]){
+      if (lock && !lockActive[ch]){
          Serial.print("Kanal ");
          Serial.print(ch + 1);
          Serial.println(" wird gesperrt!");
@@ -490,7 +491,7 @@ void lockRelay(uint8_t ch, boolean lock){
          
          lockActive[ch] = true;
       }                  
-      else{                 
+      else if (!lock && lockActive[ch]){
          lockActive[ch] = false;
          
          Serial.print("Kanal ");
