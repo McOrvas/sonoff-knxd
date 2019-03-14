@@ -34,33 +34,34 @@
  * *************************
  */
 
-const uint8_t  GA_SWITCH_COUNT = sizeof(GA_SWITCH[0]) / 3,
-               GA_LOCK_COUNT   = sizeof(GA_LOCK[0]) / 3,
-               KNXD_GROUP_CONNECTION_REQUEST[] = {0x00, 0x05, EIB_OPEN_GROUPCON >> 8, EIB_OPEN_GROUPCON & 0xFF, 0x00, 0x00, 0x00};
+const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
+               GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
+               KNXD_GROUP_CONNECTION_REQUEST[]  = {0x00, 0x05, EIB_OPEN_GROUPCON >> 8, EIB_OPEN_GROUPCON & 0xFF, 0x00, 0x00, 0x00};
 
 uint8_t        messageLength = 0,
                messageResponse[32];
 
-boolean        connectionConfirmed = false,
-               lockActive[]        = {false, false, false, false},
-               buttonPressed[]     = {false, false, false, false},
-               relayStatus[]       = {false, false, false, false},
-               ledBlinkStatus      = false;
+boolean        connectionConfirmed              = false,
+               lockActive[]                     = {false, false, false, false},
+               buttonLastState[]                = {true, true, true, true},
+               buttonDebouncedState[]           = {true, true, true, true},
+               relayStatus[]                    = {false, false, false, false},
+               ledBlinkStatus                   = false;
 
-uint32_t       knxdConnectionCount         = 0,
-               receivedTelegrams           = 0,
-               missingTelegramTimeouts     = 0,
-               incompleteTelegramTimeouts  = 0,
+uint32_t       knxdConnectionCount              = 0,
+               receivedTelegrams                = 0,
+               missingTelegramTimeouts          = 0,
+               incompleteTelegramTimeouts       = 0,
                
 // Variablen zur Zeitmessung
-               currentMillis               = 0,
-               millisOverflows             = 0,
-               buttonPressedMillis[]       = {0, 0, 0, 0},
-               autoOffTimerStartMillis[]   = {0, 0, 0, 0},
-               connectionEstablishedMillis = 0,
-               connectionFailedMillis      = 0,
-               ledBlinkLastSwitch          = 0,
-               lastTelegramReceivedMillis  = 0,
+               currentMillis                    = 0,
+               millisOverflows                  = 0,
+               buttonDebounceMillis[]           = {0, 0, 0, 0},
+               autoOffTimerStartMillis[]        = {0, 0, 0, 0},
+               connectionEstablishedMillis      = 0,
+               connectionFailedMillis           = 0,
+               ledBlinkLastSwitch               = 0,
+               lastTelegramReceivedMillis       = 0,
                lastTelegramHeaderReceivedMillis = 0;
 
 // WLAN-Client
@@ -351,25 +352,36 @@ void knxLoop(){
 
 
 void checkButton(uint8_t ch){
-   // true = released, false = pressed
+   // Button pressed (true = released, false = pressed)
    if (digitalRead(GPIO_BUTTON[ch]) == BUTTON_INVERTED){
-      if (buttonPressedMillis[ch] == 0)
-         buttonPressedMillis[ch] = currentMillis;
-      
-      else if (buttonPressed[ch] == BUTTON_INVERTED && (currentMillis - buttonPressedMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
-         buttonPressed[ch] = !BUTTON_INVERTED;
+      // Button state changed, start debouncing timer
+      if (buttonLastState[ch] != BUTTON_INVERTED)
+         buttonDebounceMillis[ch] = currentMillis;
+      // Check debouncing timer
+      else if (buttonDebouncedState[ch] == !BUTTON_INVERTED && (currentMillis - buttonDebounceMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
+         buttonDebouncedState[ch] = BUTTON_INVERTED;
          if (BUTTON_TOGGLE)
             switchRelay(ch, !relayStatus[ch], false);
          else
             switchRelay(ch, true, false);
-      }      
-   }
-   else {      
-      if (!BUTTON_TOGGLE && relayStatus[ch] && buttonPressedMillis[ch] > 0)
-         switchRelay(ch, false, false);
+      }
       
-      buttonPressed[ch] = BUTTON_INVERTED;
-      buttonPressedMillis[ch] = 0;
+      buttonLastState[ch] = BUTTON_INVERTED;
+   }
+   // Button released
+   else {
+      // Button state changed, start debouncing timer
+      if (buttonLastState[ch] == BUTTON_INVERTED)
+         buttonDebounceMillis[ch] = currentMillis;
+      // Check debouncing timer
+      else if (buttonDebouncedState[ch] == BUTTON_INVERTED && (currentMillis - buttonDebounceMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
+         buttonDebouncedState[ch] = !BUTTON_INVERTED;
+         // Switch relay off if button is not in toggle mode
+         if (!BUTTON_TOGGLE && relayStatus[ch])
+            switchRelay(ch, false, false);
+      }
+      
+      buttonLastState[ch] = !BUTTON_INVERTED;
    }
 }
 
