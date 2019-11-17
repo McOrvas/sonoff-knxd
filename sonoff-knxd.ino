@@ -34,6 +34,8 @@
  * *************************
  */
 
+const String   SOFTWARE_VERSION                 = "2019-11-17";
+
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
                KNXD_GROUP_CONNECTION_REQUEST[]  = {0x00, 0x05, EIB_OPEN_GROUPCON >> 8, EIB_OPEN_GROUPCON & 0xFF, 0x00, 0x00, 0x00};
@@ -529,11 +531,11 @@ void sendStatusGA(uint8_t ch){
 
 
 String getUptimeString(){
-   uint32_t secsUp  = currentMillis / 1000,      
+   uint32_t secsUp  = (currentMillis / 1000) + (millisOverflows * (0xFFFFFFFF / 1000)),
             seconds = secsUp % 60,
             minutes = (secsUp / 60) % 60,
             hours   = (secsUp / (60 * 60)) % 24,
-            days    = (millisOverflows * 50) + (secsUp / (60 * 60 * 24));
+            days    = secsUp / (60 * 60 * 24);
       
    char timeString[8];
    sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
@@ -576,6 +578,7 @@ String getWebServerMainPage() {
          HTML_HEADER + 
          
          "<H1>" + HOST_NAME + " (" + HOST_DESCRIPTION + ")</H1>\n"
+         "Firmware: <a href=\"https://github.com/McOrvas/sonoff-knxd\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")<br />\n"
          "Laufzeit: " + getUptimeString() + "\n"
          
          "<H2>KNX-Status</H2>\n"
@@ -651,7 +654,7 @@ String getWebServerMainPage() {
          "<tr><td>Gateway</td><td>" + WiFi.gatewayIP().toString() + "</td></tr>\n"
          "<tr><td>MAC</td><td>" + WiFi.macAddress() + "</td></tr>\n"
          "<tr><td>SSID</td><td>" + String(WiFi.SSID()) + "</td></tr>\n"
-         "<tr><td>RSSI</td><td>" + String(WiFi.RSSI()) + "</td></tr>\n"
+         "<tr><td>RSSI</td><td>" + String(WiFi.RSSI()) + " dBm</td></tr>\n"
          "</table>\n"
                
          "<H2>Ger&auml;tewartung</H2>\n"
