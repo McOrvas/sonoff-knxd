@@ -34,21 +34,30 @@
  * *************************
  */
 
-const String   SOFTWARE_VERSION                 = "2019-11-17";
+const String   SOFTWARE_VERSION                 = "2019-12-09";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
                KNXD_GROUP_CONNECTION_REQUEST[]  = {0x00, 0x05, EIB_OPEN_GROUPCON >> 8, EIB_OPEN_GROUPCON & 0xFF, 0x00, 0x00, 0x00};
 
 uint8_t        messageLength = 0,
-               messageResponse[32];
+               messageResponse[32],
+               timeWeekday = 0,
+               timeHours   = 0,
+               timeMinutes = 0,
+               timeSeconds = 0,
+               dateDay     = 0,
+               dateMonth   = 0,
+               dateYear    = 0;
 
 boolean        connectionConfirmed              = false,
                lockActive[]                     = {false, false, false, false},
                buttonLastState[]                = {true, true, true, true},
                buttonDebouncedState[]           = {true, true, true, true},
                relayStatus[]                    = {false, false, false, false},
-               ledBlinkStatus                   = false;
+               ledBlinkStatus                   = false,
+               timeValid                        = false,
+               dateValid                        = false;
 
 uint32_t       knxdConnectionCount              = 0,
                receivedTelegrams                = 0,
@@ -64,7 +73,9 @@ uint32_t       knxdConnectionCount              = 0,
                connectionFailedMillis           = 0,
                ledBlinkLastSwitch               = 0,
                lastTelegramReceivedMillis       = 0,
-               lastTelegramHeaderReceivedMillis = 0;
+               lastTelegramHeaderReceivedMillis = 0,
+               timeTelegramReceivedMillis       = 0,
+               dateTelegramReceivedMillis       = 0;
 
 // WLAN-Client
 WiFiClient              client;
@@ -278,17 +289,37 @@ void knxLoop(){
             
             // Die Status-GA senden, sobald die Verbindung steht. Dadurch wird sie beim ersten Start nach einem Spannungsausfall gesendet.
             for (uint8_t ch= 0; ch<CHANNELS; ch++)
-               sendStatusGA(ch);
+               writeGA(GA_STATUS[ch], relayStatus[ch]);
+            
+            if (REQUEST_DATE_AND_TIME_INITIALLY){
+               if (!dateValid && GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0)
+                  readGA(GA_DATE);
+               if (!timeValid && GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0)
+                  readGA(GA_TIME);               
+            }
          }
          
-         if (     messageLength >= 8 // Ein Bit bzw. DPT 1.001
+         if (     messageLength >= 8
                && messageResponse[0] == EIB_GROUP_PACKET >> 8
                && messageResponse[1] == EIB_GROUP_PACKET & 0xFF){
             
             receivedTelegrams++;  
             lastTelegramReceivedMillis = currentMillis;
-            //Serial.print("Received Telegrams: ");
-            //Serial.println(receivedTelegrams);
+            
+//             Serial.printf("Received group packet telegram (#%d): ", receivedTelegrams);
+//             for (uint8_t i=0; i<messageLength; i++){
+//                Serial.printf("%02X", messageResponse[i]);
+//                Serial.print(" ");
+//             }
+//             Serial.printf("(%d.%d.%d -> ", messageResponse[2] >> 4, messageResponse[2] & 0xF, messageResponse[3]);
+//             Serial.printf("%d/%d/%d, ", messageResponse[4] >> 3, messageResponse[4] & 0x7, messageResponse[5]);
+//             if (messageResponse[6] == 0x00 && (messageResponse[7] & 0x80))
+//                Serial.print("GroupValueWrite");
+//             else if (messageResponse[6] == 0x00 && (messageResponse[7] & 0x40))
+//                Serial.print("GroupValueResponse");
+//             else if (messageResponse[6] == 0x00 && messageResponse[7] == 0x00)
+//                Serial.print("GroupValueRead");
+//             Serial.println(")");
             
             // Schalten oder sperren
             if (      messageLength == 8 // Ein Bit bzw. DPT 1.001
@@ -333,7 +364,40 @@ void knxLoop(){
                   }
                }
             }
-         }         
+            
+            // Time or Date received
+            else if (messageLength == 11
+                  && messageResponse[6] == 0x00
+                  && (messageResponse[7] & 0xC0)){ // Accept GroupValueWrite (0x80) and GroupValueResponse (0x40)
+               
+               // Date telegram
+               if (GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0
+                   && messageResponse[4] == (GA_DATE[0] << 3) + GA_DATE[1] && messageResponse[5] == GA_DATE[2]) {
+                  
+                  dateDay   = messageResponse[8] & 0x1F;
+                  dateMonth = messageResponse[9] & 0x0F;
+                  dateYear  = (messageResponse[10] & 0x7F);
+                  dateValid = true;
+                  dateTelegramReceivedMillis = currentMillis;
+                  
+                  Serial.println("Date telegram received: " + getDateString());
+               }
+               
+               // Time telegram
+               if (GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0
+                   && messageResponse[4] == (GA_TIME[0] << 3) + GA_TIME[1] && messageResponse[5] == GA_TIME[2]) {
+                  
+                  timeWeekday = messageResponse[8] >> 5;
+                  timeHours   = messageResponse[8] & 0x1F;
+                  timeMinutes = messageResponse[9] & 0x3F;
+                  timeSeconds = messageResponse[10] & 0x3F;  
+                  timeValid   = true;
+                  timeTelegramReceivedMillis = currentMillis;
+                  
+                  Serial.println("Time telegram received: " + getTimeString(timeWeekday, timeHours, timeMinutes, timeSeconds));
+               }
+            }
+         }
          
          // Für die nächste Nachricht zurücksetzen
          messageLength = 0;
@@ -482,7 +546,7 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
       if (LED_SHOWS_RELAY_STATUS)
          digitalWrite(GPIO_LED,  !relayStatus[0]);
          
-      sendStatusGA(ch);
+      writeGA(GA_STATUS[ch], relayStatus[ch]);
    }
 }
 
@@ -521,21 +585,28 @@ void lockRelay(uint8_t ch, boolean lock){
 }
 
 
-void sendStatusGA(uint8_t ch){
-   // Status-GA schreiben
+void writeGA(const uint8_t ga[], const boolean status){
    if (client.connected()){
-      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1], GA_STATUS[ch][2], 0x00, 0x80 | relayStatus[ch]};
+      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x80 | status};
       client.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
 
 
+void readGA(const uint8_t ga[]){
+   if (client.connected()){
+      const uint8_t groupValueRequest[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x00};
+      client.write(groupValueRequest, sizeof(groupValueRequest));
+   }   
+}
+
+
 String getUptimeString(){
-   uint32_t secsUp  = (currentMillis / 1000) + (millisOverflows * (0xFFFFFFFF / 1000)),
-            seconds = secsUp % 60,
-            minutes = (secsUp / 60) % 60,
-            hours   = (secsUp / (60 * 60)) % 24,
-            days    = secsUp / (60 * 60 * 24);
+   uint32_t totalSeconds  = (currentMillis / 1000) + (millisOverflows * (0xFFFFFFFF / 1000)),
+            seconds       = totalSeconds % 60,
+            minutes       = (totalSeconds / 60) % 60,
+            hours         = (totalSeconds / (60 * 60)) % 24,
+            days          = totalSeconds / (60 * 60 * 24);
       
    char timeString[8];
    sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
@@ -549,11 +620,59 @@ String getUptimeString(){
 }
 
 
+String getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t seconds){
+   char timeString[8];
+   sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);                  
+   
+   String dayString;
+   
+        if (weekday == 1) dayString = "Monday";
+   else if (weekday == 2) dayString = "Tuesday";
+   else if (weekday == 3) dayString = "Wednesday";
+   else if (weekday == 4) dayString = "Thursday";
+   else if (weekday == 5) dayString = "Friday";
+   else if (weekday == 6) dayString = "Saturday";
+   else if (weekday == 7) dayString = "Sunday";
+   
+   // Check if the weekday is valid
+   if (timeWeekday == 0)
+      return timeString;
+   else
+      return dayString + String(", ") + String(timeString);
+}
+
+
+String getUpdatedTimeString(){
+   uint32_t totalSeconds  = (timeHours * 3600) + (timeMinutes * 60) + timeSeconds + ((currentMillis - timeTelegramReceivedMillis) / 1000),
+            seconds       = totalSeconds % 60,
+            minutes       = (totalSeconds / 60) % 60,
+            hours         = (totalSeconds / (60 * 60)) % 24,
+            daysOverflows = totalSeconds / (60 * 60 * 24),
+            weekday       = (timeWeekday - 1 + daysOverflows) % 7;
+   
+   return getTimeString(weekday + 1, hours, minutes, seconds);
+}
+
+
+String getDateString(){   
+   char dateString[10];
+   sprintf(dateString, "%04d-%02d-%02d", dateYear >= 90 ? 1900 + dateYear : 2000 + dateYear, dateMonth, dateDay);
+   return dateString;
+}
+
+
 String getWebServerMainPage() {
    const String connectionToolTip   = "title=\""
                                       + String(knxdConnectionCount)        + " total connection" + String(knxdConnectionCount != 1 ? "s" : "") + " / "
                                       + String(missingTelegramTimeouts)    + " missing telegram timeout" + String(missingTelegramTimeouts != 1 ? "s" : "") + " / "
-                                      + String(incompleteTelegramTimeouts) + " incomplete telegram timeout" + String(incompleteTelegramTimeouts != 1 ? "s" : "") + "\"";
+                                      + String(incompleteTelegramTimeouts) + " incomplete telegram timeout" + String(incompleteTelegramTimeouts != 1 ? "s" : "") + "\"",
+                                      
+                busTime             = "<p>\n"
+                                      "Bus time: "
+                                      + String(timeValid ? getUpdatedTimeString() : "-") +
+                                      " / "
+                                      + String(dateValid ? getDateString() : "-") +
+                                      "</p>\n";
 
    String GA_SWITCH_STRING[CHANNELS],
           GA_LOCK_STRING[CHANNELS],
@@ -589,6 +708,8 @@ String getWebServerMainPage() {
             : "<div class=\"red\" " + connectionToolTip + ">Das Modul ist nicht mit dem EIBD/KNXD verbunden!</div>\n"
            ) +         
          "</p>\n"
+         
+         + String(timeValid || dateValid ? busTime : "") +
          
          "<table>\n"
          "<tr>"

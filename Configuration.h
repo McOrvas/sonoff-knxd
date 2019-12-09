@@ -50,7 +50,13 @@ const uint8_t  GA_SWITCH[4][2][3] = {{{31, 0,  0}, {31, 1,  0}},  // Channel 1 (
                GA_STATUS[][3] =      {{31, 0,  2},                // Channel 1 (always exactly one address)
                                       {31, 0,  5},                // Channel 2 (always exactly one address)
                                       {31, 0,  8},                // Channel 3 (always exactly one address)
-                                      {31, 0, 11}};               // Channel 4 (always exactly one address)
+                                      {31, 0, 11}},               // Channel 4 (always exactly one address)
+
+               GA_TIME[]      =       { 0, 0,  0},                // GA for time, DPT 10.001 (3 bytes)
+               GA_DATE[]      =       { 0, 0,  0};                // GA for date, DPT 11.001 (3 bytes)
+
+// The telegrams for date and time should be requested after the connection has been established
+const boolean  REQUEST_DATE_AND_TIME_INITIALLY = false;
 
 // When a channel is being (un)locked, it can be turned on or off.
 const boolean  SWITCH_ON_WHEN_LOCKED[]    = {false, false, false, false},
