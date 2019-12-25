@@ -34,11 +34,14 @@
  * *************************
  */
 
-const String   SOFTWARE_VERSION                 = "2019-12-09";
+const String   SOFTWARE_VERSION                 = "2019-12-25";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
                KNXD_GROUP_CONNECTION_REQUEST[]  = {0x00, 0x05, EIB_OPEN_GROUPCON >> 8, EIB_OPEN_GROUPCON & 0xFF, 0x00, 0x00, 0x00};
+
+const boolean  GA_DATE_VALID = GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0,
+               GA_TIME_VALID = GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0;
 
 uint8_t        messageLength = 0,
                messageResponse[32],
@@ -83,27 +86,6 @@ WiFiClient              client;
 // Webserver
 ESP8266WebServer        webServer(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
-
-const String HTML_HEADER =  "<!DOCTYPE HTML>\n"
-                            "<html>\n"
-                            "<head>\n"
-                               "<meta charset=\"utf-8\"/>\n"
-                               "<meta http-equiv=\"refresh\" content=\"15;URL=/\">\n"
-                               "<style>\n"
-                                  ".green {color:darkgreen; font-weight: bold;}\n"
-                                  ".red   {color:darkred; font-weight: bold;}\n"
-                                  "table, th, td {border-collapse:collapse; border: 1px solid black;}\n"
-                                  "th, td {text-align: left; padding: 2px 10px 2px 10px;}\n"
-                                  "A:link    {text-decoration: none;}\n"
-                                  "A:visited {text-decoration: none;}\n"
-                                  "A:active  {text-decoration: none;}\n"
-                                  "A:hover   {text-decoration: underline;}\n" 
-                               "</style>\n"
-                            "</head>\n"
-                            "<body>\n",
-      
-             HTML_FOOTER =  "</body>\n"
-                            "</html>";
 
 
 void setup() {
@@ -167,10 +149,13 @@ void setup() {
          Serial.print("/");
          Serial.print(GA_STATUS[ch][2]);
       }
-      Serial.println("\n");
+      Serial.println();
+      
+      Serial.println("GA Zeit:              " + String(GA_TIME[0]) + "/" + String(GA_TIME[1]) + "/" + String(GA_TIME[2]));
+      Serial.println("GA Datum:             " + String(GA_DATE[0]) + "/" + String(GA_DATE[1]) + "/" + String(GA_DATE[2]));
    }
    
-   Serial.print("Verbinde mit WLAN '");
+   Serial.print("\nVerbinde mit WLAN '");
    Serial.print(SSID);
    Serial.print("'");
    
@@ -292,9 +277,9 @@ void knxLoop(){
                writeGA(GA_STATUS[ch], relayStatus[ch]);
             
             if (REQUEST_DATE_AND_TIME_INITIALLY){
-               if (!dateValid && GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0)
+               if (GA_DATE_VALID && !dateValid)
                   readGA(GA_DATE);
-               if (!timeValid && GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0)
+               if (GA_TIME_VALID && !timeValid)
                   readGA(GA_TIME);               
             }
          }
@@ -371,8 +356,7 @@ void knxLoop(){
                   && (messageResponse[7] & 0xC0)){ // Accept GroupValueWrite (0x80) and GroupValueResponse (0x40)
                
                // Date telegram
-               if (GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0
-                   && messageResponse[4] == (GA_DATE[0] << 3) + GA_DATE[1] && messageResponse[5] == GA_DATE[2]) {
+               if (GA_DATE_VALID && messageResponse[4] == (GA_DATE[0] << 3) + GA_DATE[1] && messageResponse[5] == GA_DATE[2]) {
                   
                   dateDay   = messageResponse[8] & 0x1F;
                   dateMonth = messageResponse[9] & 0x0F;
@@ -384,8 +368,7 @@ void knxLoop(){
                }
                
                // Time telegram
-               if (GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0
-                   && messageResponse[4] == (GA_TIME[0] << 3) + GA_TIME[1] && messageResponse[5] == GA_TIME[2]) {
+               if (GA_TIME_VALID && messageResponse[4] == (GA_TIME[0] << 3) + GA_TIME[1] && messageResponse[5] == GA_TIME[2]) {
                   
                   timeWeekday = messageResponse[8] >> 5;
                   timeHours   = messageResponse[8] & 0x1F;
@@ -512,6 +495,7 @@ boolean connectToKnxd(){
    }
 }
 
+
 void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
    if (ch >= CHANNELS){
       Serial.print("Ungültiger Kanal: ");
@@ -601,9 +585,13 @@ void readGA(const uint8_t ga[]){
 }
 
 
-String getUptimeString(){
-   uint32_t totalSeconds  = (currentMillis / 1000) + (millisOverflows * (0xFFFFFFFF / 1000)),
-            seconds       = totalSeconds % 60,
+uint32_t getUptimeSeconds(){
+   return (currentMillis / 1000) + (millisOverflows * (0xFFFFFFFF / 1000));
+}
+
+
+String getUptimeString(uint32_t totalSeconds){
+   uint32_t seconds       = totalSeconds % 60,
             minutes       = (totalSeconds / 60) % 60,
             hours         = (totalSeconds / (60 * 60)) % 24,
             days          = totalSeconds / (60 * 60 * 24);
@@ -626,19 +614,19 @@ String getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t se
    
    String dayString;
    
-        if (weekday == 1) dayString = "Monday";
-   else if (weekday == 2) dayString = "Tuesday";
-   else if (weekday == 3) dayString = "Wednesday";
-   else if (weekday == 4) dayString = "Thursday";
-   else if (weekday == 5) dayString = "Friday";
-   else if (weekday == 6) dayString = "Saturday";
-   else if (weekday == 7) dayString = "Sunday";
+        if (weekday == 1) dayString = "Montag";
+   else if (weekday == 2) dayString = "Dienstag";
+   else if (weekday == 3) dayString = "Mittwoch";
+   else if (weekday == 4) dayString = "Donnerstag";
+   else if (weekday == 5) dayString = "Freitag";
+   else if (weekday == 6) dayString = "Samstag";
+   else if (weekday == 7) dayString = "Sonntag";
    
    // Check if the weekday is valid
    if (timeWeekday == 0)
       return timeString;
    else
-      return dayString + String(", ") + String(timeString);
+      return String(timeString) + " (" + dayString + ")";
 }
 
 
@@ -658,297 +646,4 @@ String getDateString(){
    char dateString[10];
    sprintf(dateString, "%04d-%02d-%02d", dateYear >= 90 ? 1900 + dateYear : 2000 + dateYear, dateMonth, dateDay);
    return dateString;
-}
-
-
-String getWebServerMainPage() {
-   const String connectionToolTip   = "title=\""
-                                      + String(knxdConnectionCount)        + " total connection" + String(knxdConnectionCount != 1 ? "s" : "") + " / "
-                                      + String(missingTelegramTimeouts)    + " missing telegram timeout" + String(missingTelegramTimeouts != 1 ? "s" : "") + " / "
-                                      + String(incompleteTelegramTimeouts) + " incomplete telegram timeout" + String(incompleteTelegramTimeouts != 1 ? "s" : "") + "\"",
-                                      
-                busTime             = "<p>\n"
-                                      "Bus time: "
-                                      + String(timeValid ? getUpdatedTimeString() : "-") +
-                                      " / "
-                                      + String(dateValid ? getDateString() : "-") +
-                                      "</p>\n";
-
-   String GA_SWITCH_STRING[CHANNELS],
-          GA_LOCK_STRING[CHANNELS],
-          GA_STATUS_STRING[CHANNELS];
-
-   for (uint8_t ch=0; ch<CHANNELS; ch++){
-      for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
-         if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0)
-            GA_SWITCH_STRING[ch] += String(GA_SWITCH[ch][i][0]) + "/" + String(GA_SWITCH[ch][i][1]) + "/" + String(GA_SWITCH[ch][i][2]) + "<br />";
-      }
-
-      for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
-         if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0)
-            GA_LOCK_STRING[ch] += String(GA_LOCK[ch][i][0]) + "/" + String(GA_LOCK[ch][i][1]) + "/" + String(GA_LOCK[ch][i][2]) + "<br />";
-      }
-
-      if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0)
-         GA_STATUS_STRING[ch] += String(GA_STATUS[ch][0]) + "/" + String(GA_STATUS[ch][1]) + "/" + String(GA_STATUS[ch][2]);
-   }
-   
-   return 
-         HTML_HEADER + 
-         
-         "<H1>" + HOST_NAME + " (" + HOST_DESCRIPTION + ")</H1>\n"
-         "Firmware: <a href=\"https://github.com/McOrvas/sonoff-knxd\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")<br />\n"
-         "Laufzeit: " + getUptimeString() + "\n"
-         
-         "<H2>KNX-Status</H2>\n"
-         
-         "<p>\n"
-         + String(client.connected()
-            ? "<div class=\"green\" " + connectionToolTip + ">Das Modul ist mit dem EIBD/KNXD verbunden!</div>\n"
-            : "<div class=\"red\" " + connectionToolTip + ">Das Modul ist nicht mit dem EIBD/KNXD verbunden!</div>\n"
-           ) +         
-         "</p>\n"
-         
-         + String(timeValid || dateValid ? busTime : "") +
-         
-         "<table>\n"
-         "<tr>"
-         "<th>Gruppenadressen</th>"
-         "<th>Kanal 1</th>"
-         + String(CHANNELS > 1 ? "<th>Kanal 2</th>" : "")
-         + String(CHANNELS > 2 ? "<th>Kanal 3</th>" : "")
-         + String(CHANNELS > 3 ? "<th>Kanal 4</th>" : "") +
-         "</tr>\n"
-         
-         "<tr><td>Schalten</td>"
-         "<td>" + GA_SWITCH_STRING[0] + "</td>"
-         + String(CHANNELS > 1 ? "<td>" + GA_SWITCH_STRING[1] + "</td>" : "")
-         + String(CHANNELS > 2 ? "<td>" + GA_SWITCH_STRING[2] + "</td>" : "")
-         + String(CHANNELS > 3 ? "<td>" + GA_SWITCH_STRING[3] + "</td>" : "") +
-         "</tr>\n"
-         
-         "<tr><td>Sperren</td>"
-         "<td>" + GA_LOCK_STRING[0] + "</td>"
-         + String(CHANNELS > 1 ? "<td>" + GA_LOCK_STRING[1] + "</td>" : "")
-         + String(CHANNELS > 2 ? "<td>" + GA_LOCK_STRING[2] + "</td>" : "")
-         + String(CHANNELS > 3 ? "<td>" + GA_LOCK_STRING[3] + "</td>" : "") +
-         "</tr>\n"
-         
-         "<tr><td>Status</td>"
-         "<td>" + GA_STATUS_STRING[0] + "</td>"
-         + String(CHANNELS > 1 ? "<td>" + GA_STATUS_STRING[1] + "</td>" : "")
-         + String(CHANNELS > 2 ? "<td>" + GA_STATUS_STRING[2] + "</td>" : "")
-         + String(CHANNELS > 3 ? "<td>" + GA_STATUS_STRING[3] + "</td>" : "") +
-         "</tr>\n"
-         "</table>\n"
-         
-         "<H2>Schaltstatus</H2>\n"         
-         
-         "<table>\n"
-         "<tr>"
-         "<th>Status</th>"
-         "<th>Kanal 1</th>"
-         + String(CHANNELS > 1 ? "<th>Kanal 2</th>" : "")
-         + String(CHANNELS > 2 ? "<th>Kanal 3</th>" : "")
-         + String(CHANNELS > 3 ? "<th>Kanal 4</th>" : "") +
-         "</tr>\n"
-         
-         "<tr><td>Schaltstatus</td>"
-         "<td><a href=\"ch1/toggle\" " + String(relayStatus[0] ? "class=\"green\">eingeschaltet" : "class=\"red\">ausgeschaltet") + "</a></td>"
-         + String(CHANNELS > 1 ? "<td><a href=\"ch2/toggle\" " + String(relayStatus[1] ? "class=\"green\">eingeschaltet" : "class=\"red\">ausgeschaltet") + "</a></td>" : "")
-         + String(CHANNELS > 2 ? "<td><a href=\"ch3/toggle\" " + String(relayStatus[2] ? "class=\"green\">eingeschaltet" : "class=\"red\">ausgeschaltet") + "</a></td>" : "")
-         + String(CHANNELS > 3 ? "<td><a href=\"ch4/toggle\" " + String(relayStatus[3] ? "class=\"green\">eingeschaltet" : "class=\"red\">ausgeschaltet") + "</a></td>" : "") +
-         "</tr>\n"
-         
-         "<tr><td>Sperre</td>"
-         "<td><a href=\"ch1/toggleLock\" " + String(lockActive[0] ? "class=\"red\">gesperrt" : "class=\"green\">freigegeben") + "</a></td>"
-         + String(CHANNELS > 1 ? "<td><a href=\"ch2/toggleLock\" " + String(lockActive[1] ? "class=\"red\">gesperrt" : "class=\"green\">freigegeben") + "</a></td>" : "")
-         + String(CHANNELS > 2 ? "<td><a href=\"ch3/toggleLock\" " + String(lockActive[2] ? "class=\"red\">gesperrt" : "class=\"green\">freigegeben") + "</a></td>" : "")
-         + String(CHANNELS > 3 ? "<td><a href=\"ch4/toggleLock\" " + String(lockActive[3] ? "class=\"red\">gesperrt" : "class=\"green\">freigegeben") + "</a></td>" : "") +
-         "</tr>\n"         
-         "</table>\n" 
-         
-         "<H2>WLAN-Status</H2>\n"
-         "<table>\n"
-         "<tr><td>IP-Adresse</td><td>" + WiFi.localIP().toString() + "</td></tr>\n"
-         "<tr><td>Netzmaske</td><td>" + WiFi.subnetMask().toString() + "</td></tr>\n"
-         "<tr><td>Gateway</td><td>" + WiFi.gatewayIP().toString() + "</td></tr>\n"
-         "<tr><td>MAC</td><td>" + WiFi.macAddress() + "</td></tr>\n"
-         "<tr><td>SSID</td><td>" + String(WiFi.SSID()) + "</td></tr>\n"
-         "<tr><td>RSSI</td><td>" + String(WiFi.RSSI()) + " dBm</td></tr>\n"
-         "</table>\n"
-               
-         "<H2>Ger&auml;tewartung</H2>\n"
-
-         "<p><a href=\"update\">Software aktualisieren</a></p>\n"
-         "<p><a href=\"reboot\">Ger&auml;t neustarten</a></p>\n"
-         
-         + HTML_FOOTER;      
-}
-
-
-void setupWebServer(){   
-   webServer.on("/", [](){
-      webServer.send(200, "text/html", getWebServerMainPage());
-   });  
-   
-   webServer.on("/ch1/on", [](){
-      switchRelay(0, true, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch2/on", [](){
-      switchRelay(1, true, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch3/on", [](){
-      switchRelay(2, true, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch4/on", [](){
-      switchRelay(3, true, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch1/off", [](){
-      switchRelay(0, false, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });   
-   
-   webServer.on("/ch2/off", [](){
-      switchRelay(1, false, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch3/off", [](){
-      switchRelay(2, false, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch4/off", [](){
-      switchRelay(3, false, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });  
-   
-   webServer.on("/ch1/toggle", [](){
-      switchRelay(0, !relayStatus[0], false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch2/toggle", [](){
-      switchRelay(1, !relayStatus[1], false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch3/toggle", [](){
-      switchRelay(2, !relayStatus[2], false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch4/toggle", [](){
-      switchRelay(3, !relayStatus[3], false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch1/lock", [](){
-      lockRelay(0, true);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch2/lock", [](){
-      lockRelay(1, true);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch3/lock", [](){
-      lockRelay(2, true);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch4/lock", [](){
-      lockRelay(3, true);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch1/unlock", [](){
-      lockRelay(0, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch2/unlock", [](){
-      lockRelay(1, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch3/unlock", [](){
-      lockRelay(2, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch4/unlock", [](){
-      lockRelay(3, false);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch1/toggleLock", [](){
-      lockRelay(0, !lockActive[0]);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch2/toggleLock", [](){
-      lockRelay(1, !lockActive[1]);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch3/toggleLock", [](){
-      lockRelay(2, !lockActive[2]);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch4/toggleLock", [](){
-      lockRelay(3, !lockActive[3]);
-      webServer.sendHeader("Location", String("/"), true);
-      webServer.send(302, "text/plain", "");
-   });
-   
-   webServer.on("/ch1/state", [](){webServer.send(200, "text/plain", relayStatus[0] ? "on" : "off");}); 
-   webServer.on("/ch2/state", [](){webServer.send(200, "text/plain", relayStatus[1] ? "on" : "off");}); 
-   webServer.on("/ch3/state", [](){webServer.send(200, "text/plain", relayStatus[2] ? "on" : "off");}); 
-   webServer.on("/ch4/state", [](){webServer.send(200, "text/plain", relayStatus[3] ? "on" : "off");}); 
-   
-   webServer.on("/reboot", [](){
-      webServer.send(200, "text/html", HTML_HEADER + "Modul wird neugestartet...<p><a href=\"..\">Zur&uuml;ck</a></p>\n" + HTML_FOOTER);
-      delay(1000);
-      ESP.restart();
-   });
-   
-   httpUpdateServer.setup(&webServer);
-   
-   webServer.begin();
-   Serial.println("Webserver gestartet");   
 }
