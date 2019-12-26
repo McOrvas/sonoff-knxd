@@ -57,6 +57,7 @@ boolean        connectionConfirmed              = false,
                lockActive[]                     = {false, false, false, false},
                buttonLastState[]                = {true, true, true, true},
                buttonDebouncedState[]           = {true, true, true, true},
+               autoOffTimerActive[]             = {false, false, false, false},
                relayStatus[]                    = {false, false, false, false},
                ledBlinkStatus                   = false,
                timeValid                        = false,
@@ -95,10 +96,7 @@ void setup() {
    pinMode(GPIO_LED, OUTPUT);
    digitalWrite(GPIO_LED, !relayStatus[0]);
    
-   Serial.print(HOST_NAME);
-   Serial.print(" (");
-   Serial.print(HOST_DESCRIPTION);
-   Serial.println(")\n");
+   Serial.println(HOST_NAME + " (" + HOST_DESCRIPTION + ")\n");
    
    for (uint8_t ch=0; ch<CHANNELS; ch++){
       pinMode(GPIO_BUTTON[ch], INPUT_PULLUP);
@@ -109,9 +107,7 @@ void setup() {
       else
          digitalWrite(GPIO_RELAY[ch], !relayStatus[ch]);
       
-      Serial.print("Kanal ");
-      Serial.print(ch + 1);      
-      Serial.print(" GAs schalten: ");
+      Serial.print("Kanal " + String(ch + 1) + " GAs schalten: ");
       for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
          if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0) {
             Serial.print(GA_SWITCH[ch][i][0]);
@@ -124,9 +120,7 @@ void setup() {
       }
       Serial.println();
       
-      Serial.print("Kanal ");
-      Serial.print(ch + 1);
-      Serial.print(" GAs sperren:  ");
+      Serial.print("Kanal " + String(ch + 1) + " GAs sperren:  ");
       for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
          if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0) {
             Serial.print(GA_LOCK[ch][0][0]);
@@ -139,9 +133,7 @@ void setup() {
       }
       Serial.println();
 
-      Serial.print("Kanal ");
-      Serial.print(ch + 1);
-      Serial.print(" GA  Status:   ");
+      Serial.print("Kanal " + String(ch + 1) + " GA  Status:   ");
       if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0) {
          Serial.print(GA_STATUS[ch][0]);
          Serial.print("/");
@@ -155,9 +147,7 @@ void setup() {
       Serial.println("GA Datum:             " + String(GA_DATE[0]) + "/" + String(GA_DATE[1]) + "/" + String(GA_DATE[2]));
    }
    
-   Serial.print("\nVerbinde mit WLAN '");
-   Serial.print(SSID);
-   Serial.print("'");
+   Serial.print("\nVerbinde mit WLAN '" + String(SSID) + "'");
    
    /* Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,
    *   would try to act as both a client and an access-point and could cause
@@ -172,8 +162,7 @@ void setup() {
       Serial.print(".");
    }
    
-   Serial.println();
-   Serial.print("Verbindung hergestellt. IP-Adresse: ");
+   Serial.print("\nVerbindung hergestellt. IP-Adresse: ");
    Serial.println(WiFi.localIP());
       
    setupWebServer();
@@ -200,12 +189,10 @@ void loop() {
       checkButton(ch);
 
       // Check if a channel has to be switched off by a timer
-      if (relayStatus[ch] && AUTO_OFF_TIMER_S[ch] > 0 && autoOffTimerStartMillis[ch] > 0 && (currentMillis - autoOffTimerStartMillis[ch]) >= (AUTO_OFF_TIMER_S[ch] * 1000)){
-         Serial.print("Auto off timer for channel ");
-         Serial.print(ch + 1);
-         Serial.println(" has expired!");
-         // Set value to 0 even if the channel cannot be switched off due to an active lock.
-         autoOffTimerStartMillis[ch] = 0;
+      if (relayStatus[ch] && autoOffTimerActive[ch] && (currentMillis - autoOffTimerStartMillis[ch]) >= (AUTO_OFF_TIMER_S[ch] * 1000)){
+         Serial.println("Auto off timer for channel " + String(ch + 1) + " has expired!");
+         // Set to false even if the channel cannot be switched off due to an active lock.
+         autoOffTimerActive[ch] = false;
          switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK);
       }
    }
@@ -227,9 +214,7 @@ void knxLoop(){
          connectionFailedMillis = currentMillis;
          connectionConfirmed = false;
          
-         Serial.print("Verbindung unterbrochen. Neuaufbau in ");
-         Serial.print(CONNECTION_LOST_DELAY_S);
-         Serial.println(" s.");
+         Serial.println("Verbindung unterbrochen. Neuaufbau in " + String(CONNECTION_LOST_DELAY_S) + " s.");
       }      
 
       // Pause zwischen zwei Verbindungsversuchen abgelaufen
@@ -249,9 +234,7 @@ void knxLoop(){
       client.stopAll();
       missingTelegramTimeouts++;
       
-      Serial.print("Timeout: No telegram received during ");
-      Serial.print(MISSING_TELEGRAM_TIMEOUT_MIN);
-      Serial.println(" minutes");
+      Serial.println("Timeout: No telegram received during " + String(MISSING_TELEGRAM_TIMEOUT_MIN) + " minutes");
    }
    
    // Die Verbindung ist etabliert
@@ -341,8 +324,7 @@ void knxLoop(){
                for (uint8_t ch=0; ch<CHANNELS; ch++){
                   if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0
                       && messageResponse[4] == (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1] && messageResponse[5] == GA_STATUS[ch][2]) {
-                     Serial.print("Leseanforderung Status Kanal ");
-                     Serial.println(ch+1);
+                     Serial.println("Leseanforderung Status Kanal " + String(ch + 1));
             
                      const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1], GA_STATUS[ch][2], 0x00, 0x40 | relayStatus[ch]};
                      client.write(groupValueResponse, sizeof(groupValueResponse));
@@ -392,9 +374,7 @@ void knxLoop(){
          incompleteTelegramTimeouts++;
          messageLength = 0;
          
-         Serial.print("Timeout: Incomplete received telegram after ");
-         Serial.print(INCOMPLETE_TELEGRAM_TIMEOUT_MS);
-         Serial.println(" ms");
+         Serial.println("Timeout: Incomplete received telegram after " + String(INCOMPLETE_TELEGRAM_TIMEOUT_MS) + " ms");
       }
    }
 }
@@ -477,8 +457,7 @@ boolean connectToKnxd(){
    connectionConfirmed = false;
    client.stopAll();
    
-   Serial.print("Verbinde mit EIBD/KNXD auf ");
-   Serial.println(KNXD_IP);
+   Serial.println("Verbinde mit EIBD/KNXD auf " + String(KNXD_IP));
    
    if (!client.connect(KNXD_IP, KNXD_PORT)) {
       Serial.println("Verbindung fehlgeschlagen!");
@@ -498,53 +477,49 @@ boolean connectToKnxd(){
 
 void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
    if (ch >= CHANNELS){
-      Serial.print("Ungültiger Kanal: ");
-      Serial.println(ch);      
-   }
-   else if (!overrideLock && lockActive[ch]){
-      Serial.print("Schaltkommando wird ignoriert, Kanal ");
-      Serial.print(ch+1);
-      Serial.println(" ist gesperrt!");
+      Serial.println("Ungültiger Kanal: " + String(ch + 1));
    }
    else if (relayStatus[ch] != on){
-      relayStatus[ch] = on;
-      
-      Serial.print("Kanal ");
-      Serial.print(ch + 1);
-      
-      if (on){
-         autoOffTimerStartMillis[ch] = currentMillis;
-         Serial.println(" wird eingeschaltet");
+      if (!overrideLock && lockActive[ch]){
+         Serial.println("Schaltkommando wird ignoriert, Kanal " + String(ch + 1) + " ist gesperrt!");
       }
       else{
-         autoOffTimerStartMillis[ch] = 0;
-         Serial.println(" wird ausgeschaltet");
-      }
-      
-      if (RELAY_NORMALLY_OPEN[ch])
-         digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
-      else
-         digitalWrite(GPIO_RELAY[ch], !relayStatus[ch]);
-
-      // Die LED zeigt immer den Zustand des ersten Relais an
-      if (LED_SHOWS_RELAY_STATUS)
-         digitalWrite(GPIO_LED,  !relayStatus[0]);
+         relayStatus[ch] = on;
          
-      writeGA(GA_STATUS[ch], relayStatus[ch]);
+         if (on){
+            if (AUTO_OFF_TIMER_S[ch] > 0){
+               autoOffTimerStartMillis[ch] = currentMillis;
+               autoOffTimerActive[ch] = true;
+            }
+            Serial.println("Kanal " + String(ch + 1) + " wird eingeschaltet");
+         }
+         else{
+            autoOffTimerActive[ch] = false;
+            Serial.println("Kanal " + String(ch + 1) + " wird ausgeschaltet");
+         }
+         
+         if (RELAY_NORMALLY_OPEN[ch])
+            digitalWrite(GPIO_RELAY[ch], relayStatus[ch]);
+         else
+            digitalWrite(GPIO_RELAY[ch], !relayStatus[ch]);
+
+         // Die LED zeigt immer den Zustand des ersten Relais an
+         if (LED_SHOWS_RELAY_STATUS)
+            digitalWrite(GPIO_LED,  !relayStatus[0]);
+            
+         writeGA(GA_STATUS[ch], relayStatus[ch]);
+      }
    }
 }
 
 
 void lockRelay(uint8_t ch, boolean lock){
    if (ch >= CHANNELS){
-      Serial.print("Ungültiger Kanal: ");
-      Serial.println(ch);      
+      Serial.println("Ungültiger Kanal: " + String(ch + 1));
    }
    else {      
       if (lock && !lockActive[ch]){
-         Serial.print("Kanal ");
-         Serial.print(ch + 1);
-         Serial.println(" wird gesperrt!");
+         Serial.println("Kanal " + String(ch + 1) + " wird gesperrt!");
          
          if (SWITCH_OFF_WHEN_LOCKED[ch])
             switchRelay(ch, false, false);
@@ -556,9 +531,7 @@ void lockRelay(uint8_t ch, boolean lock){
       else if (!lock && lockActive[ch]){
          lockActive[ch] = false;
          
-         Serial.print("Kanal ");
-         Serial.print(ch + 1);
-         Serial.println(" wird entsperrt!");
+         Serial.println("Kanal " + String(ch + 1) + " wird entsperrt!");
          
          if (SWITCH_OFF_WHEN_UNLOCKED[ch])
             switchRelay(ch, false, false);
