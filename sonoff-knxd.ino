@@ -34,7 +34,7 @@
  * *************************
  */
 
-const String   SOFTWARE_VERSION                 = "2019-12-25";
+const String   SOFTWARE_VERSION                 = "2019-12-30";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
@@ -53,7 +53,8 @@ uint8_t        messageLength = 0,
                dateMonth   = 0,
                dateYear    = 0;
 
-boolean        connectionConfirmed              = false,
+boolean        knxdConnectionInitiated          = false,
+               knxdConnectionConfirmed          = false,
                lockActive[]                     = {false, false, false, false},
                buttonLastState[]                = {true, true, true, true},
                buttonDebouncedState[]           = {true, true, true, true},
@@ -61,20 +62,25 @@ boolean        connectionConfirmed              = false,
                relayStatus[]                    = {false, false, false, false},
                ledBlinkStatus                   = false,
                timeValid                        = false,
-               dateValid                        = false;
+               dateValid                        = false,
+               missingTelegramTimeoutEnabled    = false,
+               incompleteTelegramTimeoutEnabled = false;
 
 uint32_t       knxdConnectionCount              = 0,
                receivedTelegrams                = 0,
                missingTelegramTimeouts          = 0,
                incompleteTelegramTimeouts       = 0,
+               wifiDisconnections               = 0,
+               knxdDisconnections               = 0,
+               knxdHandshakeTimeouts            = 0,
                
 // Variablen zur Zeitmessung
                currentMillis                    = 0,
                millisOverflows                  = 0,
                buttonDebounceMillis[]           = {0, 0, 0, 0},
                autoOffTimerStartMillis[]        = {0, 0, 0, 0},
-               connectionEstablishedMillis      = 0,
-               connectionFailedMillis           = 0,
+               knxdConnectionInitiatedMillis    = 0,
+               knxdConnectionFailedMillis       = 0,
                ledBlinkLastSwitch               = 0,
                lastTelegramReceivedMillis       = 0,
                lastTelegramHeaderReceivedMillis = 0,
@@ -96,7 +102,8 @@ void setup() {
    pinMode(GPIO_LED, OUTPUT);
    digitalWrite(GPIO_LED, !relayStatus[0]);
    
-   Serial.println(HOST_NAME + " (" + HOST_DESCRIPTION + ")\n");
+   Serial.println("\n\n" + HOST_NAME + " (" + HOST_DESCRIPTION + ")");
+   Serial.println("Software-Version: " + SOFTWARE_VERSION + "\n");
    
    for (uint8_t ch=0; ch<CHANNELS; ch++){
       pinMode(GPIO_BUTTON[ch], INPUT_PULLUP);
@@ -142,11 +149,11 @@ void setup() {
          Serial.print(GA_STATUS[ch][2]);
       }
       Serial.println();
-      
-      Serial.println("GA Zeit:              " + String(GA_TIME[0]) + "/" + String(GA_TIME[1]) + "/" + String(GA_TIME[2]));
-      Serial.println("GA Datum:             " + String(GA_DATE[0]) + "/" + String(GA_DATE[1]) + "/" + String(GA_DATE[2]));
    }
-   
+      
+   Serial.println("GA Zeit:              " + String(GA_TIME[0]) + "/" + String(GA_TIME[1]) + "/" + String(GA_TIME[2]));
+   Serial.println("GA Datum:             " + String(GA_DATE[0]) + "/" + String(GA_DATE[1]) + "/" + String(GA_DATE[2]));
+      
    Serial.print("\nVerbinde mit WLAN '" + String(SSID) + "'");
    
    /* Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,
@@ -167,10 +174,8 @@ void setup() {
       
    setupWebServer();
    
+   currentMillis = millis();
    connectToKnxd();
-   
-   // Initialize telegram timeout timer
-   lastTelegramReceivedMillis = millis();
 }
 
 
@@ -207,34 +212,39 @@ void loop() {
 
 
 void knxLoop(){
-   // Falls die Verbindung zum EIBD/KNXD unterbrochen ist, diese hier neu aufbauen
-   if (!client.connected() || (!connectionConfirmed && (currentMillis - connectionEstablishedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS)){
-      // Beim ersten Ausfall der Verbindung
-      if (connectionFailedMillis == 0){
-         connectionFailedMillis = currentMillis;
-         connectionConfirmed = false;
-         
-         Serial.println("Verbindung unterbrochen. Neuaufbau in " + String(CONNECTION_LOST_DELAY_S) + " s.");
-      }      
-
+   // Keine Verbindung zum knxd
+   if (!knxdConnectionInitiated){
       // Pause zwischen zwei Verbindungsversuchen abgelaufen
-      if ((currentMillis - connectionFailedMillis) >= CONNECTION_LOST_DELAY_S * 1000){
-         if (connectToKnxd())
-            connectionFailedMillis = 0;
-         else
-            connectionFailedMillis = currentMillis;
-      }
-      
-      // Reset telegram timeout timer
-      lastTelegramReceivedMillis = currentMillis;
+      if ((currentMillis - knxdConnectionFailedMillis) >= CONNECTION_LOST_DELAY_S * 1000)
+         connectToKnxd();
+   }
+   
+   // Die WLAN-Verbindung wurde getrennt
+   else if (WiFi.status() != WL_CONNECTED){
+      Serial.println("Die WLAN-Verbindung wurde getrennt.");      
+      wifiDisconnections++;
+      resetKnxdConnection();
+   }
+   
+   // Die Verbindung zum knxd wurde unterbrochen
+   else if (!client.connected()){
+      Serial.println("Die Verbindung zum knxd wurde getrennt.");
+      knxdDisconnections++;
+      resetKnxdConnection();
+   }
+   
+   // Der Verbindungsaufbau zum knxd wurde nicht rechtzeitig bestätigt
+   else if (!knxdConnectionConfirmed && (currentMillis - knxdConnectionInitiatedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS){
+      Serial.println("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von " + String(CONNECTION_CONFIRMATION_TIMEOUT_MS) + " ms bestätigt.");
+      knxdHandshakeTimeouts++;
+      resetKnxdConnection();
    }
    
    // Die Verbindung steht prinzipiell, aber seit MISSING_TELEGRAM_TIMEOUT_MIN wurde kein Telegramm mehr empfangen und deshalb wird ein Timeout ausgelöst
-   else if (MISSING_TELEGRAM_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= MISSING_TELEGRAM_TIMEOUT_MIN * 60000){
-      client.stopAll();
-      missingTelegramTimeouts++;
-      
+   else if (missingTelegramTimeoutEnabled && MISSING_TELEGRAM_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= MISSING_TELEGRAM_TIMEOUT_MIN * 60000){
       Serial.println("Timeout: No telegram received during " + String(MISSING_TELEGRAM_TIMEOUT_MIN) + " minutes");
+      missingTelegramTimeouts++;
+      resetKnxdConnection();
    }
    
    // Die Verbindung ist etabliert
@@ -243,6 +253,7 @@ void knxLoop(){
       if (messageLength == 0 && client.available() >= 2){
          messageLength = (((int) client.read()) << 8) + client.read();
          lastTelegramHeaderReceivedMillis = currentMillis;
+         incompleteTelegramTimeoutEnabled = true;
       }
       
       // Die Nutzdaten einer Nachricht lesen
@@ -250,9 +261,9 @@ void knxLoop(){
          client.read(messageResponse, messageLength);
          
          // Prüfen, ob der initiale Verbindungsaufbau korrekt bestätigt wurde      
-         if (!connectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
+         if (!knxdConnectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
             Serial.println("EIBD/KNXD Verbindung hergestellt");
-            connectionConfirmed = true;   
+            knxdConnectionConfirmed = true;   
             knxdConnectionCount++;
             
             // Die Status-GA senden, sobald die Verbindung steht. Dadurch wird sie beim ersten Start nach einem Spannungsausfall gesendet.
@@ -273,6 +284,7 @@ void knxLoop(){
             
             receivedTelegrams++;  
             lastTelegramReceivedMillis = currentMillis;
+            missingTelegramTimeoutEnabled = true;
             
 //             Serial.printf("Received group packet telegram (#%d): ", receivedTelegrams);
 //             for (uint8_t i=0; i<messageLength; i++){
@@ -369,14 +381,46 @@ void knxLoop(){
       }
       
       // Incomplete telegram received timeout
-      else if (INCOMPLETE_TELEGRAM_TIMEOUT_MS > 0 && messageLength > 0 && lastTelegramHeaderReceivedMillis > 0 && (currentMillis - lastTelegramHeaderReceivedMillis) >= INCOMPLETE_TELEGRAM_TIMEOUT_MS){
-         client.stopAll();
-         incompleteTelegramTimeouts++;
-         messageLength = 0;
-         
+      else if (incompleteTelegramTimeoutEnabled && INCOMPLETE_TELEGRAM_TIMEOUT_MS > 0 && messageLength > 0 && (currentMillis - lastTelegramHeaderReceivedMillis) >= INCOMPLETE_TELEGRAM_TIMEOUT_MS){
          Serial.println("Timeout: Incomplete received telegram after " + String(INCOMPLETE_TELEGRAM_TIMEOUT_MS) + " ms");
+         incompleteTelegramTimeouts++;
+         resetKnxdConnection();         
       }
    }
+}
+
+
+boolean connectToKnxd(){
+   resetKnxdConnection();
+   
+   Serial.println("Verbinde mit knxd auf " + String(KNXD_IP));
+   
+   if (client.connect(KNXD_IP, KNXD_PORT)) {
+      client.setNoDelay(true);
+      client.keepAlive(KA_IDLE_S, KA_INTERVAL_S, KA_RETRY_COUNT);      
+      client.write(KNXD_GROUP_CONNECTION_REQUEST, sizeof(KNXD_GROUP_CONNECTION_REQUEST));
+      
+      knxdConnectionInitiated       = true;
+      knxdConnectionInitiatedMillis = currentMillis;      
+      
+      return client.connected();
+   }
+   else{
+      Serial.println("Verbindung fehlgeschlagen!");
+      knxdConnectionFailedMillis = currentMillis;
+      return false;
+   }
+}
+
+
+void resetKnxdConnection(){
+      client.stopAll();
+      knxdConnectionInitiated          = false;
+      knxdConnectionConfirmed          = false;
+      missingTelegramTimeoutEnabled    = false;
+      incompleteTelegramTimeoutEnabled = false;
+      knxdConnectionFailedMillis       = currentMillis;
+      messageLength                    = 0;
 }
 
 
@@ -417,7 +461,7 @@ void checkButton(uint8_t ch){
 
 void ledBlink(){
    // Falls die Verbindung steht, die LED blinken lassen.
-   if (connectionConfirmed) {
+   if (knxdConnectionConfirmed) {
       // LED-Blinkstatus ist zurzeit an
       if (ledBlinkStatus) {
          if ((currentMillis - ledBlinkLastSwitch) >= LED_BLINK_ON_TIME_MS){
@@ -450,28 +494,6 @@ void ledBlink(){
    else
       digitalWrite(GPIO_LED,  HIGH);
       
-}
-
-
-boolean connectToKnxd(){
-   connectionConfirmed = false;
-   client.stopAll();
-   
-   Serial.println("Verbinde mit EIBD/KNXD auf " + String(KNXD_IP));
-   
-   if (!client.connect(KNXD_IP, KNXD_PORT)) {
-      Serial.println("Verbindung fehlgeschlagen!");
-      return false;
-   }
-   else{      
-      client.setNoDelay(true);
-      client.keepAlive(KA_IDLE_S, KA_INTERVAL_S, KA_RETRY_COUNT);      
-      client.write(KNXD_GROUP_CONNECTION_REQUEST, sizeof(KNXD_GROUP_CONNECTION_REQUEST));
-      
-      connectionEstablishedMillis = millis();      
-      
-      return client.connected();
-   }
 }
 
 

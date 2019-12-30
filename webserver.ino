@@ -29,11 +29,12 @@ String getKnxdStatusString(){
       return
          "<a href=\"maintenance\" title=\"Ger&auml;tewartung\" "
          + String(client.connected()
-            ? "class=\"green\">Das Modul ist mit dem EIBD/KNXD verbunden!"
-            : "class=\"red\">Das Modul ist nicht mit dem EIBD/KNXD verbunden!"
+            ? "class=\"green\">Das Modul ist mit dem knxd verbunden!"
+            : "class=\"red\">Das Modul ist nicht mit dem knxd verbunden!"
            ) +
          "</a>";
 }
+
 
 String getWebServerMainPage() {
    return
@@ -113,21 +114,20 @@ String getWebServerMaintenancePage() {
          "<td>" + getUptimeString(getUptimeSeconds()) + "</td></tr>\n"
          "</table>\n"
          
-         "<H2>WLAN-Status</H2>\n"
+         "<H2>Netzwerk</H2>\n"
          
          "<table>\n"
          "<tr><td>IP-Adresse</td><td>" + WiFi.localIP().toString() + "</td></tr>\n"
          "<tr><td>Netzmaske</td><td>"  + WiFi.subnetMask().toString() + "</td></tr>\n"
          "<tr><td>Gateway</td><td>"    + WiFi.gatewayIP().toString() + "</td></tr>\n"
          "<tr><td>MAC</td><td>"        + WiFi.macAddress() + "</td></tr>\n"
+         "<tr><td>knxd</td><td>"    + String(KNXD_IP) + "</td></tr>\n"
          "<tr><td>SSID</td><td>"       + String(WiFi.SSID()) + "</td></tr>\n"
          "<tr><td>RSSI</td><td>"       + String(WiFi.RSSI()) + " dBm</td></tr>\n"
          "</table>\n"
          
-         "<H2>KNX-Status</H2>\n"
+         "<H2>KNX-Konfiguration</H2>\n"
          
-         "<p>" + getKnxdStatusString() + "</p>\n"
-        
          "<table>\n"
          "<tr>"
          "<th>Gruppenadressen</th>"
@@ -162,15 +162,23 @@ String getWebServerMaintenancePage() {
          + String(GA_TIME_VALID ? gaTimeString : "") +
          "</table>\n"
          
-         "<br />\n"
+         "<H2>Verbindungsstatistik</H2>\n"
+         
+         "<p>" + getKnxdStatusString() + "</p>\n"
          
          "<table>\n"
-         "<tr><td>Anzahl der Verbindungen zum knxd</td>"
-         "<td>" + String(knxdConnectionCount) + "</td></tr>\n"
+         "<tr><td>Erfolgreiche Verbindungsaufbauten zum knxd</td>"
+         "<td>" + String(knxdConnectionCount) + "</td></tr>\n"         
+         "<tr><td>Zeit&uuml;berschreitungen beim Verbindungsaufbau zum knxd (" + CONNECTION_CONFIRMATION_TIMEOUT_MS + " ms)</td>"
+         "<td>" + String(knxdHandshakeTimeouts) + "</td></tr>\n"
          "<tr><td>Verbindungsabbr&uuml;che wegen Zeit&uuml;berschreitung zwischen zwei Telegrammen (" + MISSING_TELEGRAM_TIMEOUT_MIN + " min)</td>"
          "<td>" + String(missingTelegramTimeouts) + "</td></tr>\n"
          "<tr><td>Verbindungsabbr&uuml;che wegen unvollständig empfangener Telegramme (" + INCOMPLETE_TELEGRAM_TIMEOUT_MS + " ms)</td>"
          "<td>" + String(incompleteTelegramTimeouts) + "</td></tr>\n"
+         "<tr><td>Verbindungsabbr&uuml;che zum WLAN</td>"
+         "<td>" + String(wifiDisconnections) + "</td></tr>\n"
+         "<tr><td>Sonstige Verbindungsabbr&uuml;che zum knxd</td>"
+         "<td>" + String(knxdDisconnections) + "</td></tr>\n"
          "<tr><td>Empfangene Gruppentelegramme</td>"
          "<td>" + String(receivedTelegrams) + " (&#8960; " + String(receivedTelegrams / (float) getUptimeSeconds()) +" / s)</td></tr>\n"
          + String(GA_DATE_VALID
