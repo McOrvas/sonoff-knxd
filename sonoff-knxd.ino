@@ -34,7 +34,7 @@
  * *************************
  */
 
-const String   SOFTWARE_VERSION                 = "2019-12-30";
+const String   SOFTWARE_VERSION                 = "2020-01-07";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
@@ -66,13 +66,15 @@ boolean        knxdConnectionInitiated          = false,
                missingTelegramTimeoutEnabled    = false,
                incompleteTelegramTimeoutEnabled = false;
 
-uint32_t       knxdConnectionCount              = 0,
+uint32_t       knxdConnectionInitiatedCount     = 0,
+               knxdConnectionFailedCount        = 0,
+               knxdConnectionHandshakeTimeouts  = 0,
+               knxdConnectionConfirmedCount     = 0,
                receivedTelegrams                = 0,
                missingTelegramTimeouts          = 0,
                incompleteTelegramTimeouts       = 0,
                wifiDisconnections               = 0,
-               knxdDisconnections               = 0,
-               knxdHandshakeTimeouts            = 0,
+               knxdDisconnections               = 0,               
                
 // Variablen zur Zeitmessung
                currentMillis                    = 0,
@@ -236,7 +238,7 @@ void knxLoop(){
    // Der Verbindungsaufbau zum knxd wurde nicht rechtzeitig bestätigt
    else if (!knxdConnectionConfirmed && (currentMillis - knxdConnectionInitiatedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS){
       Serial.println("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von " + String(CONNECTION_CONFIRMATION_TIMEOUT_MS) + " ms bestätigt.");
-      knxdHandshakeTimeouts++;
+      knxdConnectionHandshakeTimeouts++;
       resetKnxdConnection();
    }
    
@@ -264,7 +266,7 @@ void knxLoop(){
          if (!knxdConnectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
             Serial.println("EIBD/KNXD Verbindung hergestellt");
             knxdConnectionConfirmed = true;   
-            knxdConnectionCount++;
+            knxdConnectionConfirmedCount++;
             
             // Die Status-GA senden, sobald die Verbindung steht. Dadurch wird sie beim ersten Start nach einem Spannungsausfall gesendet.
             for (uint8_t ch= 0; ch<CHANNELS; ch++)
@@ -401,20 +403,22 @@ boolean connectToKnxd(){
       client.write(KNXD_GROUP_CONNECTION_REQUEST, sizeof(KNXD_GROUP_CONNECTION_REQUEST));
       
       knxdConnectionInitiated       = true;
-      knxdConnectionInitiatedMillis = currentMillis;      
+      knxdConnectionInitiatedMillis = currentMillis;
+      knxdConnectionInitiatedCount++;
       
       return client.connected();
    }
    else{
       Serial.println("Verbindung fehlgeschlagen!");
       knxdConnectionFailedMillis = currentMillis;
+      knxdConnectionFailedCount++;
       return false;
    }
 }
 
 
 void resetKnxdConnection(){
-      client.stopAll();
+      client.stop();
       knxdConnectionInitiated          = false;
       knxdConnectionConfirmed          = false;
       missingTelegramTimeoutEnabled    = false;

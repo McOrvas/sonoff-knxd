@@ -14,6 +14,7 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl){
                ".red   {color:darkred; font-weight: bold;}\n"
                "table, th, td {border-collapse:collapse; border: 1px solid black;}\n"
                "th, td {text-align: left; padding: 2px 10px 2px 10px;}\n"
+               "th {background-color: #707070; color: white;}\n"
                "A:link    {text-decoration: none;}\n"
                "A:visited {text-decoration: none;}\n"
                "A:active  {text-decoration: none;}\n"
@@ -28,7 +29,7 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl){
 String getKnxdStatusString(){
       return
          "<a href=\"maintenance\" title=\"Ger&auml;tewartung\" "
-         + String(client.connected()
+         + String(knxdConnectionConfirmed
             ? "class=\"green\">Das Modul ist mit dem knxd verbunden!"
             : "class=\"red\">Das Modul ist nicht mit dem knxd verbunden!"
            ) +
@@ -167,20 +168,30 @@ String getWebServerMaintenancePage() {
          "<p>" + getKnxdStatusString() + "</p>\n"
          
          "<table>\n"
-         "<tr><td>Erfolgreiche Verbindungsaufbauten zum knxd</td>"
-         "<td>" + String(knxdConnectionCount) + "</td></tr>\n"         
-         "<tr><td>Zeit&uuml;berschreitungen beim Verbindungsaufbau zum knxd (" + CONNECTION_CONFIRMATION_TIMEOUT_MS + " ms)</td>"
-         "<td>" + String(knxdHandshakeTimeouts) + "</td></tr>\n"
-         "<tr><td>Verbindungsabbr&uuml;che wegen Zeit&uuml;berschreitung zwischen zwei Telegrammen (" + MISSING_TELEGRAM_TIMEOUT_MIN + " min)</td>"
-         "<td>" + String(missingTelegramTimeouts) + "</td></tr>\n"
+         "<tr><th colspan=\"2\">Verbindungsaufbau zum knxd</th></tr>\n"
+         "<tr><td>Fehlgeschlagene Verbindungsanfragen</td>"
+         "<td>" + String(knxdConnectionFailedCount) + "</td></tr>\n"
+         "<tr><td>Erfolgreiche Verbindungsanfragen</td>"
+         "<td>" + String(knxdConnectionInitiatedCount) + "</td></tr>\n"
+         "<tr><td>Zeit&uuml;berschreitungen bei der Verbindungsbest&auml;tigung durch den knxd (" + CONNECTION_CONFIRMATION_TIMEOUT_MS + " ms)</td>"
+         "<td>" + String(knxdConnectionHandshakeTimeouts) + "</td></tr>\n"
+         "<tr><td>Vom knxd best&auml;tigte Verbindungen</td>"
+         "<td>" + String(knxdConnectionConfirmedCount) + "</td></tr>\n"         
+         
+         "<tr><th colspan=\"2\">Trennung bestehender Verbindungen zum knxd</th></tr>\n"
          "<tr><td>Verbindungsabbr&uuml;che wegen unvollständig empfangener Telegramme (" + INCOMPLETE_TELEGRAM_TIMEOUT_MS + " ms)</td>"
          "<td>" + String(incompleteTelegramTimeouts) + "</td></tr>\n"
+         "<tr><td>Verbindungsabbr&uuml;che wegen Zeit&uuml;berschreitung zwischen zwei Telegrammen (" + MISSING_TELEGRAM_TIMEOUT_MIN + " min)</td>"
+         "<td>" + String(missingTelegramTimeouts) + "</td></tr>\n"
          "<tr><td>Verbindungsabbr&uuml;che zum WLAN</td>"
          "<td>" + String(wifiDisconnections) + "</td></tr>\n"
          "<tr><td>Sonstige Verbindungsabbr&uuml;che zum knxd</td>"
          "<td>" + String(knxdDisconnections) + "</td></tr>\n"
+         
+         "<tr><th colspan=\"2\">Sonstiges</th></tr>\n"
          "<tr><td>Empfangene Gruppentelegramme</td>"
          "<td>" + String(receivedTelegrams) + " (&#8960; " + String(receivedTelegrams / (float) getUptimeSeconds()) +" / s)</td></tr>\n"
+
          + String(GA_DATE_VALID
             ? "<tr><td>Aktuelles Datum" + String(dateValid ? " (empfangen vor " + getUptimeString((currentMillis - dateTelegramReceivedMillis) / 1000) + ")": "") + "</td>"
               "<td>" + String(dateValid ? getDateString() : "-") + "</td></tr>\n"
