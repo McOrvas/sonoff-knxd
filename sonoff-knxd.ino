@@ -622,7 +622,7 @@ String getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t se
    else if (weekday == 7) dayString = "Sonntag";
    
    // Check if the weekday is valid
-   if (timeWeekday == 0)
+   if (weekday == 0)
       return timeString;
    else
       return String(timeString) + " (" + dayString + ")";
@@ -635,9 +635,9 @@ String getUpdatedTimeString(){
             minutes       = (totalSeconds / 60) % 60,
             hours         = (totalSeconds / (60 * 60)) % 24,
             daysOverflows = totalSeconds / (60 * 60 * 24),
-            weekday       = (timeWeekday - 1 + daysOverflows) % 7;
+            weekday       = timeWeekday == 0 ? 0 : ((timeWeekday - 1 + daysOverflows) % 7) + 1;
    
-   return getTimeString(weekday + 1, hours, minutes, seconds);
+   return getTimeString(weekday, hours, minutes, seconds);
 }
 
 
