@@ -2,7 +2,7 @@ const String HTML_FOOTER =  "</body>\n"
                             "</html>";
 
 
-String getHtmlHeader(uint8_t refreshRate, String refreshUrl){
+String getHtmlHeader(uint8_t refreshRate, String refreshUrl, String bodyId){
    return
          "<!DOCTYPE HTML>\n"
          "<html>\n"
@@ -15,14 +15,31 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl){
                "table, th, td {border-collapse:collapse; border: 1px solid black;}\n"
                "th, td {text-align: left; padding: 2px 10px 2px 10px;}\n"
                "th {background-color: #707070; color: white;}\n"
-               "A:link    {text-decoration: none;}\n"
-               "A:visited {text-decoration: none;}\n"
-               "A:active  {text-decoration: none;}\n"
-               "A:hover   {text-decoration: underline;}\n"
+               "a:link    {text-decoration: none;}\n"
+               "a:visited {text-decoration: none;}\n"
+               "a:active  {text-decoration: none;}\n"
+               "a:hover   {text-decoration: underline;}\n"
+               "a.box {"
+                  "background-color: #707070;"
+                  "color: white;"
+                  "padding: 2px 10px;"
+                  "width: 150px;"
+                  "text-align: center;"
+                  "display: inline-block;"
+                  "font-weight: bold;"
+                  "text-decoration: none;"
+                  "}\n"
+               "body#maintenance a.box#maintenanceA, body#main a.box#mainA, body#log a.box#logA, a.box:hover {background-color: black;}\n"
             "</style>\n"
          "</head>\n"
-         "<body>\n"
-         "<H1><a href=\"/\" style=\"color: inherit\">" + HOST_NAME + " (" + HOST_DESCRIPTION + ")</a></H1>\n";
+         "<body id=\"" + bodyId + "\">\n"
+         "<H1><a href=\"/\" style=\"color: inherit\">" + HOST_NAME + " (" + HOST_DESCRIPTION + ")</a></H1>\n"
+         + getKnxdStatusString() + "\n"
+         "<p>\n"
+         "<a class=\"box\" id=\"mainA\"        href=\"..\" title=\"Schaltstatus\">Schaltstatus</a>\n"
+         "<a class=\"box\" id=\"maintenanceA\" href=\"maintenance\" title=\"Ger&auml;tewartung\">Ger&auml;tewartung</a>\n"
+         "<a class=\"box\" id=\"logA\"         href=\"log\" title=\"Verbindungsprotokoll\">Verbindungsprotokoll</a>\n"
+         "</p>\n";
 }
 
 
@@ -39,9 +56,7 @@ String getKnxdStatusString(){
 
 String getWebServerMainPage() {
    return
-         getHtmlHeader(15, "/") +
-         
-         getKnxdStatusString() + "\n"
+         getHtmlHeader(15, "/", "main") +
          
          "<H2>Schaltstatus</H2>\n"
         
@@ -68,8 +83,6 @@ String getWebServerMainPage() {
          + String(CHANNELS > 3 ? "<td><a href=\"ch4/toggleLock\" " + String(lockActive[3] ? "class=\"red\">gesperrt" : "class=\"green\">freigegeben") + "</a></td>" : "") +
          "</tr>\n"
          "</table>\n"
-               
-         "<p><a href=\"maintenance\" title=\"Ger&auml;tewartung\">Ger&auml;tewartung</a></p>\n"
          
          + HTML_FOOTER;
 }
@@ -106,7 +119,9 @@ String getWebServerMaintenancePage() {
    }
 
    return
-         getHtmlHeader(60, "/maintenance") +
+         getHtmlHeader(60, "/maintenance", "maintenance") +
+         
+         "<H2>Ger&auml;tewartung</H2>\n"
          
          "<table>\n"
          "<tr><td><a href=\"update\" title=\"Firmware aktualisieren\">Firmware</a></td>"
@@ -122,7 +137,7 @@ String getWebServerMaintenancePage() {
          "<tr><td>Netzmaske</td><td>"  + WiFi.subnetMask().toString() + "</td></tr>\n"
          "<tr><td>Gateway</td><td>"    + WiFi.gatewayIP().toString() + "</td></tr>\n"
          "<tr><td>MAC</td><td>"        + WiFi.macAddress() + "</td></tr>\n"
-         "<tr><td>knxd</td><td>"    + String(KNXD_IP) + "</td></tr>\n"
+         "<tr><td>knxd</td><td>"       + String(KNXD_IP) + "</td></tr>\n"
          "<tr><td>SSID</td><td>"       + String(WiFi.SSID()) + "</td></tr>\n"
          "<tr><td>RSSI</td><td>"       + String(WiFi.RSSI()) + " dBm</td></tr>\n"
          "</table>\n"
@@ -165,8 +180,6 @@ String getWebServerMaintenancePage() {
          
          "<H2>Verbindungsstatistik</H2>\n"
          
-         "<p>" + getKnxdStatusString() + "</p>\n"
-         
          "<table>\n"
          "<tr><th colspan=\"2\">Verbindungsaufbau zum knxd</th></tr>\n"
          "<tr><td>Fehlgeschlagene Verbindungsanfragen</td>"
@@ -194,15 +207,39 @@ String getWebServerMaintenancePage() {
 
          + String(GA_DATE_VALID
             ? "<tr><td>Aktuelles Datum" + String(dateValid ? " (empfangen vor " + getUptimeString((currentMillis - dateTelegramReceivedMillis) / 1000) + ")": "") + "</td>"
-              "<td>" + String(dateValid ? getDateString() : "-") + "</td></tr>\n"
+              "<td>" + String(dateValid ? getDateString(dateYear, dateMonth, dateDay) : "-") + "</td></tr>\n"
             : "")
          + String(GA_TIME_VALID
-            ? "<tr><td>Aktuelle Zeit" + String(timeValid ? " (empfangen vor " + getUptimeString((currentMillis - timeTelegramReceivedMillis) / 1000) + ")": "") + "</td>"
-              "<td>" + String(timeValid ? getUpdatedTimeString() : "-") + "</td></tr>\n"
+            ? "<tr><td>Aktuelle Uhrzeit" + String(timeValid ? " (empfangen vor " + getUptimeString((currentMillis - timeTelegramReceivedMillis) / 1000) + ")": "") + "</td>"
+              "<td>" + String(timeValid ? getTimeString(getUpdatedTimeSeconds()) : "-") + "</td></tr>\n"
             : "") +
          "</table>\n"
-         
-         "<p><a href=\"..\">Zur&uuml;ck</a></p>\n"
+
+         + HTML_FOOTER;
+}
+
+
+String getWebServerLogPage() {
+   // Log-Tabelle
+   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Ereignis</th></tr>\n";
+   uint32_t start   = logEntries <= LOG_SIZE ? 0          : logEntries % LOG_SIZE,
+            end     = logEntries <= LOG_SIZE ? logEntries : (logEntries % LOG_SIZE) + LOG_SIZE;
+   
+   for (uint32_t i=start; i<end; i++){
+      logString += "<tr>"
+      "<td>" + String(logRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
+      "<td>" + String(getUptimeString(logRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
+      "<td>" + String(logRingbuffer[i % LOG_SIZE].dateValid ? getDateString(logRingbuffer[i % LOG_SIZE].dateYear, logRingbuffer[i % LOG_SIZE].dateMonth, logRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
+      "<td>" + String(logRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(logRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+      "<td>" + String(logRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n";
+   }
+   
+   logString +="</table>\n";
+   
+   return
+         getHtmlHeader(60, "/log", "log") +
+         "<H2>Verbindungsprotokoll</H2>\n"
+         + logString
          + HTML_FOOTER;
 }
 
@@ -214,6 +251,10 @@ void setupWebServer(){
    
    webServer.on("/maintenance", [](){
       webServer.send(200, "text/html", getWebServerMaintenancePage());
+   });
+   
+   webServer.on("/log", [](){
+      webServer.send(200, "text/html", getWebServerLogPage());
    });
    
    webServer.on("/ch1/on", [](){
@@ -366,7 +407,7 @@ void setupWebServer(){
    webServer.on("/ch4/state", [](){webServer.send(200, "text/plain", relayStatus[3] ? "on" : "off");});
    
    webServer.on("/reboot", [](){
-      webServer.send(200, "text/html", getHtmlHeader(15, "/") + "Modul wird neugestartet...<p><a href=\"..\">Zur&uuml;ck</a></p>\n" + HTML_FOOTER);
+      webServer.send(200, "text/html", getHtmlHeader(15, "/", "reboot") + "<H2>Modul wird neugestartet...</H2>\n" + HTML_FOOTER);
       delay(1000);
       ESP.restart();
    });

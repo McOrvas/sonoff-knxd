@@ -34,7 +34,16 @@
  * *************************
  */
 
-const String   SOFTWARE_VERSION                 = "2020-01-07";
+const String   SOFTWARE_VERSION                 = "2020-02-15";
+
+char* LOG_WLAN_CONNECTED                        = "WLAN-Verbindung hergestellt";
+char* LOG_WLAN_DISCONNECTED                     = "WLAN-Verbindung getrennt";
+char* LOG_KNXD_CONNECTION_INITIATED             = "Initiale Verbindung zum knxd hergestellt";
+char* LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT     = "Zeitüberschreitungen bei der Verbindungsbestätigung durch den knxd";
+char* LOG_KNXD_CONNECTION_CONFIRMED             = "Verbindung vom knxd bestätigt";
+char* LOG_KNXD_DISCONNECTED                     = "Verbindung zum knxd getrennt";
+char* LOG_MISSING_TELEGRAM_TIMEOUT              = "Verbindungsabbruch wegen Zeitüberschreitung zwischen zwei Telegrammen";
+char* LOG_INCOMPLETE_TELEGRAM_TIMEOUT           = "Verbindungsabbruch wegen unvollständig empfangenem Telegramm";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
@@ -95,6 +104,22 @@ WiFiClient              client;
 // Webserver
 ESP8266WebServer        webServer(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
+
+// Variablen zur Ereignisspeicherung
+const uint32_t  LOG_SIZE   = 100;
+uint32_t        logEntries = 0;
+
+struct logEvent {
+   char*       message;
+   boolean     timeValid,
+               dateValid;
+   uint32_t    entry,
+               uptimeSeconds,
+               timeSeconds;
+   uint8_t     dateDay,
+               dateMonth,
+               dateYear;
+} logRingbuffer[LOG_SIZE];
 
 
 void setup() {
@@ -173,10 +198,11 @@ void setup() {
    
    Serial.print("\nVerbindung hergestellt. IP-Adresse: ");
    Serial.println(WiFi.localIP());
-      
+   
    setupWebServer();
    
-   currentMillis = millis();
+   currentMillis = millis();   
+   logEvent(LOG_WLAN_CONNECTED);
    connectToKnxd();
 }
 
@@ -224,27 +250,31 @@ void knxLoop(){
    // Die WLAN-Verbindung wurde getrennt
    else if (WiFi.status() != WL_CONNECTED){
       Serial.println("Die WLAN-Verbindung wurde getrennt.");      
+      logEvent(LOG_WLAN_DISCONNECTED);
       wifiDisconnections++;
       resetKnxdConnection();
    }
    
    // Die Verbindung zum knxd wurde unterbrochen
    else if (!client.connected()){
-      Serial.println("Die Verbindung zum knxd wurde getrennt.");
+      Serial.println("Die Verbindung zum knxd wurde getrennt.");      
+      logEvent(LOG_KNXD_DISCONNECTED);
       knxdDisconnections++;
       resetKnxdConnection();
    }
    
    // Der Verbindungsaufbau zum knxd wurde nicht rechtzeitig bestätigt
    else if (!knxdConnectionConfirmed && (currentMillis - knxdConnectionInitiatedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS){
-      Serial.println("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von " + String(CONNECTION_CONFIRMATION_TIMEOUT_MS) + " ms bestätigt.");
+      Serial.println("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von " + String(CONNECTION_CONFIRMATION_TIMEOUT_MS) + " ms bestätigt.");      
+      logEvent(LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT);
       knxdConnectionHandshakeTimeouts++;
       resetKnxdConnection();
    }
    
    // Die Verbindung steht prinzipiell, aber seit MISSING_TELEGRAM_TIMEOUT_MIN wurde kein Telegramm mehr empfangen und deshalb wird ein Timeout ausgelöst
    else if (missingTelegramTimeoutEnabled && MISSING_TELEGRAM_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= MISSING_TELEGRAM_TIMEOUT_MIN * 60000){
-      Serial.println("Timeout: No telegram received during " + String(MISSING_TELEGRAM_TIMEOUT_MIN) + " minutes");
+      Serial.println("Timeout: No telegram received during " + String(MISSING_TELEGRAM_TIMEOUT_MIN) + " minutes");      
+      logEvent(LOG_MISSING_TELEGRAM_TIMEOUT);
       missingTelegramTimeouts++;
       resetKnxdConnection();
    }
@@ -264,7 +294,8 @@ void knxLoop(){
          
          // Prüfen, ob der initiale Verbindungsaufbau korrekt bestätigt wurde      
          if (!knxdConnectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
-            Serial.println("EIBD/KNXD Verbindung hergestellt");
+            Serial.println("EIBD/KNXD Verbindung hergestellt");            
+            logEvent(LOG_KNXD_CONNECTION_CONFIRMED);
             knxdConnectionConfirmed = true;   
             knxdConnectionConfirmedCount++;
             
@@ -360,7 +391,7 @@ void knxLoop(){
                   dateValid = true;
                   dateTelegramReceivedMillis = currentMillis;
                   
-                  Serial.println("Date telegram received: " + getDateString());
+                  Serial.println("Date telegram received: " + getDateString(dateYear, dateMonth, dateDay));
                }
                
                // Time telegram
@@ -384,7 +415,8 @@ void knxLoop(){
       
       // Incomplete telegram received timeout
       else if (incompleteTelegramTimeoutEnabled && INCOMPLETE_TELEGRAM_TIMEOUT_MS > 0 && messageLength > 0 && (currentMillis - lastTelegramHeaderReceivedMillis) >= INCOMPLETE_TELEGRAM_TIMEOUT_MS){
-         Serial.println("Timeout: Incomplete received telegram after " + String(INCOMPLETE_TELEGRAM_TIMEOUT_MS) + " ms");
+         Serial.println("Timeout: Incomplete received telegram after " + String(INCOMPLETE_TELEGRAM_TIMEOUT_MS) + " ms");         
+         logEvent(LOG_INCOMPLETE_TELEGRAM_TIMEOUT);
          incompleteTelegramTimeouts++;
          resetKnxdConnection();         
       }
@@ -404,7 +436,8 @@ boolean connectToKnxd(){
       
       knxdConnectionInitiated       = true;
       knxdConnectionInitiatedMillis = currentMillis;
-      knxdConnectionInitiatedCount++;
+      knxdConnectionInitiatedCount++;      
+      logEvent(LOG_KNXD_CONNECTION_INITIATED);
       
       return client.connected();
    }
@@ -629,20 +662,44 @@ String getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t se
 }
 
 
-String getUpdatedTimeString(){
-   uint32_t totalSeconds  = (timeHours * 3600) + (timeMinutes * 60) + timeSeconds + ((currentMillis - timeTelegramReceivedMillis) / 1000),
-            seconds       = totalSeconds % 60,
+String getTimeString(uint32_t totalSeconds){
+   uint32_t seconds       = totalSeconds % 60,
             minutes       = (totalSeconds / 60) % 60,
             hours         = (totalSeconds / (60 * 60)) % 24,
-            daysOverflows = totalSeconds / (60 * 60 * 24),
-            weekday       = timeWeekday == 0 ? 0 : ((timeWeekday - 1 + daysOverflows) % 7) + 1;
+            days          = totalSeconds / (60 * 60 * 24),
+            weekday       = days == 0 ? 0 : ((days - 1) % 7) + 1;
    
    return getTimeString(weekday, hours, minutes, seconds);
 }
 
 
-String getDateString(){   
+uint32_t getUpdatedTimeSeconds(){
+   uint32_t seconds = timeWeekday * 86400 + ((timeHours * 3600) + (timeMinutes * 60) + timeSeconds + ((currentMillis - timeTelegramReceivedMillis) / 1000));
+   
+   // Invalid weekday
+   if (timeWeekday == 0)
+      seconds = seconds % 86400;
+   
+   return seconds;
+}
+
+
+String getDateString(uint8_t year, uint8_t month, uint8_t day){   
    char dateString[10];
-   sprintf(dateString, "%04d-%02d-%02d", dateYear >= 90 ? 1900 + dateYear : 2000 + dateYear, dateMonth, dateDay);
+   sprintf(dateString, "%04d-%02d-%02d", year >= 90 ? 1900 + year : 2000 + year, month, day);
    return dateString;
+}
+
+
+void logEvent(char* message){
+   logRingbuffer[logEntries % LOG_SIZE].entry         = logEntries;
+   logRingbuffer[logEntries % LOG_SIZE].timeValid     = timeValid;
+   logRingbuffer[logEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
+   logRingbuffer[logEntries % LOG_SIZE].dateValid     = dateValid;   
+   logRingbuffer[logEntries % LOG_SIZE].dateDay       = dateDay;
+   logRingbuffer[logEntries % LOG_SIZE].dateMonth     = dateMonth;
+   logRingbuffer[logEntries % LOG_SIZE].dateYear      = dateYear;
+   logRingbuffer[logEntries % LOG_SIZE].uptimeSeconds = getUptimeSeconds();
+   logRingbuffer[logEntries % LOG_SIZE].message       = message;   
+   logEntries++;
 }
