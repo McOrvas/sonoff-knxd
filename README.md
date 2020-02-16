@@ -16,5 +16,6 @@ Flash Size | 1MB (FS:64KB OTA:~470KB)
 ### Sonoff 4CH
 Option     | Value
 :---       | :---
+Board      | Generic ESP8285 Module
 Flash Mode | DOUT (compatible)
 Flash Size | 1MB (FS:64KB OTA:~470KB)
