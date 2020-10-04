@@ -34,7 +34,7 @@
  * *************************
  */
 
-const String   SOFTWARE_VERSION                 = "2020-02-15";
+const String   SOFTWARE_VERSION                 = "2020-10-04";
 
 char* LOG_WLAN_CONNECTED                        = "WLAN-Verbindung hergestellt";
 char* LOG_WLAN_DISCONNECTED                     = "WLAN-Verbindung getrennt";
@@ -44,6 +44,13 @@ char* LOG_KNXD_CONNECTION_CONFIRMED             = "Verbindung vom knxd bestätig
 char* LOG_KNXD_DISCONNECTED                     = "Verbindung zum knxd getrennt";
 char* LOG_MISSING_TELEGRAM_TIMEOUT              = "Verbindungsabbruch wegen Zeitüberschreitung zwischen zwei Telegrammen";
 char* LOG_INCOMPLETE_TELEGRAM_TIMEOUT           = "Verbindungsabbruch wegen unvollständig empfangenem Telegramm";
+
+const uint8_t  LOG_OFF    = 0,
+               LOG_ON     = 1,
+               LOG_LOCK   = 2,
+               LOG_UNLOCK = 3;
+
+const String   SWITCH_LOG_STRINGS[] = {"Ausgeschaltet", "Eingeschaltet", "Gesperrt", "Entsperrt"};
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
@@ -106,10 +113,11 @@ ESP8266WebServer        webServer(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
 
 // Variablen zur Ereignisspeicherung
-const uint32_t  LOG_SIZE   = 100;
-uint32_t        logEntries = 0;
+const uint32_t  LOG_SIZE = 25;
+uint32_t        connectionLogEntries = 0;
+uint32_t        switchLogEntries = 0;
 
-struct logEvent {
+struct logConnectionEvent {
    char*       message;
    boolean     timeValid,
                dateValid;
@@ -119,7 +127,21 @@ struct logEvent {
    uint8_t     dateDay,
                dateMonth,
                dateYear;
-} logRingbuffer[LOG_SIZE];
+} connectionLogRingbuffer[LOG_SIZE];
+
+struct logSwitchEvent {
+   String      message;
+   uint8_t     channel,
+               type;
+   boolean     timeValid,
+               dateValid;
+   uint32_t    entry,
+               uptimeSeconds,
+               timeSeconds;
+   uint8_t     dateDay,
+               dateMonth,
+               dateYear;
+} switchLogRingbuffer[LOG_SIZE];
 
 
 void setup() {
@@ -202,7 +224,7 @@ void setup() {
    setupWebServer();
    
    currentMillis = millis();   
-   logEvent(LOG_WLAN_CONNECTED);
+   logConnectionEvent(LOG_WLAN_CONNECTED);
    connectToKnxd();
 }
 
@@ -226,7 +248,7 @@ void loop() {
          Serial.println("Auto off timer for channel " + String(ch + 1) + " has expired!");
          // Set to false even if the channel cannot be switched off due to an active lock.
          autoOffTimerActive[ch] = false;
-         switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK);
+         switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, "Ausschaltautomatik (" + String(AUTO_OFF_TIMER_S[ch]) + " s)");
       }
    }
 
@@ -250,7 +272,7 @@ void knxLoop(){
    // Die WLAN-Verbindung wurde getrennt
    else if (WiFi.status() != WL_CONNECTED){
       Serial.println("Die WLAN-Verbindung wurde getrennt.");      
-      logEvent(LOG_WLAN_DISCONNECTED);
+      logConnectionEvent(LOG_WLAN_DISCONNECTED);
       wifiDisconnections++;
       resetKnxdConnection();
    }
@@ -258,7 +280,7 @@ void knxLoop(){
    // Die Verbindung zum knxd wurde unterbrochen
    else if (!client.connected()){
       Serial.println("Die Verbindung zum knxd wurde getrennt.");      
-      logEvent(LOG_KNXD_DISCONNECTED);
+      logConnectionEvent(LOG_KNXD_DISCONNECTED);
       knxdDisconnections++;
       resetKnxdConnection();
    }
@@ -266,7 +288,7 @@ void knxLoop(){
    // Der Verbindungsaufbau zum knxd wurde nicht rechtzeitig bestätigt
    else if (!knxdConnectionConfirmed && (currentMillis - knxdConnectionInitiatedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS){
       Serial.println("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von " + String(CONNECTION_CONFIRMATION_TIMEOUT_MS) + " ms bestätigt.");      
-      logEvent(LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT);
+      logConnectionEvent(LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT);
       knxdConnectionHandshakeTimeouts++;
       resetKnxdConnection();
    }
@@ -274,7 +296,7 @@ void knxLoop(){
    // Die Verbindung steht prinzipiell, aber seit MISSING_TELEGRAM_TIMEOUT_MIN wurde kein Telegramm mehr empfangen und deshalb wird ein Timeout ausgelöst
    else if (missingTelegramTimeoutEnabled && MISSING_TELEGRAM_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= MISSING_TELEGRAM_TIMEOUT_MIN * 60000){
       Serial.println("Timeout: No telegram received during " + String(MISSING_TELEGRAM_TIMEOUT_MIN) + " minutes");      
-      logEvent(LOG_MISSING_TELEGRAM_TIMEOUT);
+      logConnectionEvent(LOG_MISSING_TELEGRAM_TIMEOUT);
       missingTelegramTimeouts++;
       resetKnxdConnection();
    }
@@ -295,7 +317,7 @@ void knxLoop(){
          // Prüfen, ob der initiale Verbindungsaufbau korrekt bestätigt wurde      
          if (!knxdConnectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
             Serial.println("EIBD/KNXD Verbindung hergestellt");            
-            logEvent(LOG_KNXD_CONNECTION_CONFIRMED);
+            logConnectionEvent(LOG_KNXD_CONNECTION_CONFIRMED);
             knxdConnectionConfirmed = true;   
             knxdConnectionConfirmedCount++;
             
@@ -346,7 +368,7 @@ void knxLoop(){
                      if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0
                          && messageResponse[4] == (GA_SWITCH[0][i][0] << 3) + GA_SWITCH[0][i][1]
                          && messageResponse[5] == GA_SWITCH[0][i][2]){
-                        switchRelay(ch, messageResponse[7] & 0x0F, false);
+                        switchRelay(ch, messageResponse[7] & 0x0F, false, String(GA_SWITCH[ch][i][0]) + "/" + String(GA_SWITCH[ch][i][1]) + "/" + String(GA_SWITCH[ch][i][2]));
                      }
                   }
                   for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
@@ -354,7 +376,7 @@ void knxLoop(){
                      if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0
                          && messageResponse[4] == (GA_LOCK[0][i][0] << 3) + GA_LOCK[0][i][1]
                          && messageResponse[5] == GA_LOCK[0][i][2]){
-                        lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch]);
+                        lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch], String(GA_LOCK[ch][i][0]) + "/" + String(GA_LOCK[ch][i][1]) + "/" + String(GA_LOCK[ch][i][2]));
                      }
                   }
                }
@@ -416,7 +438,7 @@ void knxLoop(){
       // Incomplete telegram received timeout
       else if (incompleteTelegramTimeoutEnabled && INCOMPLETE_TELEGRAM_TIMEOUT_MS > 0 && messageLength > 0 && (currentMillis - lastTelegramHeaderReceivedMillis) >= INCOMPLETE_TELEGRAM_TIMEOUT_MS){
          Serial.println("Timeout: Incomplete received telegram after " + String(INCOMPLETE_TELEGRAM_TIMEOUT_MS) + " ms");         
-         logEvent(LOG_INCOMPLETE_TELEGRAM_TIMEOUT);
+         logConnectionEvent(LOG_INCOMPLETE_TELEGRAM_TIMEOUT);
          incompleteTelegramTimeouts++;
          resetKnxdConnection();         
       }
@@ -437,7 +459,7 @@ boolean connectToKnxd(){
       knxdConnectionInitiated       = true;
       knxdConnectionInitiatedMillis = currentMillis;
       knxdConnectionInitiatedCount++;      
-      logEvent(LOG_KNXD_CONNECTION_INITIATED);
+      logConnectionEvent(LOG_KNXD_CONNECTION_INITIATED);
       
       return client.connected();
    }
@@ -471,9 +493,9 @@ void checkButton(uint8_t ch){
       else if (buttonDebouncedState[ch] == !BUTTON_INVERTED && (currentMillis - buttonDebounceMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
          buttonDebouncedState[ch] = BUTTON_INVERTED;
          if (BUTTON_TOGGLE)
-            switchRelay(ch, !relayStatus[ch], false);
+            switchRelay(ch, !relayStatus[ch], false, "Taster");
          else
-            switchRelay(ch, true, false);
+            switchRelay(ch, true, false, "Taster");
       }
       
       buttonLastState[ch] = BUTTON_INVERTED;
@@ -488,7 +510,7 @@ void checkButton(uint8_t ch){
          buttonDebouncedState[ch] = !BUTTON_INVERTED;
          // Switch relay off if button is not in toggle mode
          if (!BUTTON_TOGGLE && relayStatus[ch])
-            switchRelay(ch, false, false);
+            switchRelay(ch, false, false, "Taster");
       }
       
       buttonLastState[ch] = !BUTTON_INVERTED;
@@ -534,7 +556,7 @@ void ledBlink(){
 }
 
 
-void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
+void switchRelay(uint8_t ch, boolean on, boolean overrideLock, String source){
    if (ch >= CHANNELS){
       Serial.println("Ungültiger Kanal: " + String(ch + 1));
    }
@@ -550,10 +572,12 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
                autoOffTimerStartMillis[ch] = currentMillis;
                autoOffTimerActive[ch] = true;
             }
+            logSwitchEvent(ch, LOG_ON, source);
             Serial.println("Kanal " + String(ch + 1) + " wird eingeschaltet");
          }
          else{
             autoOffTimerActive[ch] = false;
+            logSwitchEvent(ch, LOG_OFF, source);
             Serial.println("Kanal " + String(ch + 1) + " wird ausgeschaltet");
          }
          
@@ -572,30 +596,32 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock){
 }
 
 
-void lockRelay(uint8_t ch, boolean lock){
+void lockRelay(uint8_t ch, boolean lock, String source){
    if (ch >= CHANNELS){
       Serial.println("Ungültiger Kanal: " + String(ch + 1));
    }
    else {      
       if (lock && !lockActive[ch]){
          Serial.println("Kanal " + String(ch + 1) + " wird gesperrt!");
+         logSwitchEvent(ch, LOG_LOCK, source);
          
          if (SWITCH_OFF_WHEN_LOCKED[ch])
-            switchRelay(ch, false, false);
+            switchRelay(ch, false, false, "Sperrautomatik");
          else if (SWITCH_ON_WHEN_LOCKED[ch])
-            switchRelay(ch, true, false);
+            switchRelay(ch, true, false, "Sperrautomatik");
          
-         lockActive[ch] = true;
+         lockActive[ch] = true;         
       }                  
       else if (!lock && lockActive[ch]){
          lockActive[ch] = false;
          
          Serial.println("Kanal " + String(ch + 1) + " wird entsperrt!");
+         logSwitchEvent(ch, LOG_UNLOCK, source);
          
          if (SWITCH_OFF_WHEN_UNLOCKED[ch])
-            switchRelay(ch, false, false);
+            switchRelay(ch, false, false, "Entsperrautomatik");
          else if (SWITCH_ON_WHEN_UNLOCKED[ch])
-            switchRelay(ch, true, false);
+            switchRelay(ch, true, false, "Entsperrautomatik");
       }
    }
 }
@@ -691,15 +717,31 @@ String getDateString(uint8_t year, uint8_t month, uint8_t day){
 }
 
 
-void logEvent(char* message){
-   logRingbuffer[logEntries % LOG_SIZE].entry         = logEntries;
-   logRingbuffer[logEntries % LOG_SIZE].timeValid     = timeValid;
-   logRingbuffer[logEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
-   logRingbuffer[logEntries % LOG_SIZE].dateValid     = dateValid;   
-   logRingbuffer[logEntries % LOG_SIZE].dateDay       = dateDay;
-   logRingbuffer[logEntries % LOG_SIZE].dateMonth     = dateMonth;
-   logRingbuffer[logEntries % LOG_SIZE].dateYear      = dateYear;
-   logRingbuffer[logEntries % LOG_SIZE].uptimeSeconds = getUptimeSeconds();
-   logRingbuffer[logEntries % LOG_SIZE].message       = message;   
-   logEntries++;
+void logConnectionEvent(char* message){
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].entry         = connectionLogEntries;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timeValid     = timeValid;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateValid     = dateValid;   
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateDay       = dateDay;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateMonth     = dateMonth;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateYear      = dateYear;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].uptimeSeconds = getUptimeSeconds();
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].message       = message;   
+   connectionLogEntries++;
+}
+
+
+void logSwitchEvent(uint8_t ch, uint8_t type, String message){
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].entry         = switchLogEntries;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timeValid     = timeValid;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateValid     = dateValid;   
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateDay       = dateDay;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateMonth     = dateMonth;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateYear      = dateYear;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].uptimeSeconds = getUptimeSeconds();
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].message       = message;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].channel       = ch;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].type          = type;
+   switchLogEntries++;
 }

@@ -10,8 +10,9 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl, String bodyId){
             "<meta charset=\"utf-8\"/>\n"
             "<meta http-equiv=\"refresh\" content=\"" + String(refreshRate) + "; URL=" + refreshUrl + "\">\n"
             "<style>\n"
-               ".green {color:darkgreen; font-weight: bold;}\n"
-               ".red   {color:darkred; font-weight: bold;}\n"
+               ".green  {color:darkgreen; font-weight: bold;}\n"
+               ".red    {color:darkred; font-weight: bold;}\n"
+               ".orange {color:darkorange; font-weight: bold;}\n"
                "table, th, td {border-collapse:collapse; border: 1px solid black;}\n"
                "th, td {text-align: left; padding: 2px 10px 2px 10px;}\n"
                "th {background-color: #707070; color: white;}\n"
@@ -29,16 +30,17 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl, String bodyId){
                   "font-weight: bold;"
                   "text-decoration: none;"
                   "}\n"
-               "body#maintenance a.box#maintenanceA, body#main a.box#mainA, body#log a.box#logA, a.box:hover {background-color: black;}\n"
+               "body#maintenance a.box#maintenanceA, body#main a.box#mainA, body#connectionLog a.box#connectionLogA, body#switchLog a.box#switchLogA, a.box:hover {background-color: black;}\n"
             "</style>\n"
          "</head>\n"
          "<body id=\"" + bodyId + "\">\n"
          "<H1><a href=\"/\" style=\"color: inherit\">" + HOST_NAME + " (" + HOST_DESCRIPTION + ")</a></H1>\n"
          + getKnxdStatusString() + "\n"
          "<p>\n"
-         "<a class=\"box\" id=\"mainA\"        href=\"..\" title=\"Schaltstatus\">Schaltstatus</a>\n"
-         "<a class=\"box\" id=\"maintenanceA\" href=\"maintenance\" title=\"Ger&auml;tewartung\">Ger&auml;tewartung</a>\n"
-         "<a class=\"box\" id=\"logA\"         href=\"log\" title=\"Verbindungsprotokoll\">Verbindungsprotokoll</a>\n"
+         "<a class=\"box\" id=\"mainA\"          href=\"..\"            title=\"Schaltstatus\">Schaltstatus</a>\n"
+         "<a class=\"box\" id=\"maintenanceA\"   href=\"maintenance\"   title=\"Ger&auml;tewartung\">Ger&auml;tewartung</a>\n"
+         "<a class=\"box\" id=\"switchLogA\"     href=\"switchLog\"     title=\"Schaltprotokoll\">Schaltprotokoll</a>\n"
+         "<a class=\"box\" id=\"connectionLogA\" href=\"connectionLog\" title=\"Verbindungsprotokoll\">Verbindungsprotokoll</a>\n"
          "</p>\n";
 }
 
@@ -219,25 +221,60 @@ String getWebServerMaintenancePage() {
 }
 
 
-String getWebServerLogPage() {
+String getWebServerSwitchLogPage() {
    // Log-Tabelle
-   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Ereignis</th></tr>\n";
-   uint32_t start   = logEntries <= LOG_SIZE ? 0          : logEntries % LOG_SIZE,
-            end     = logEntries <= LOG_SIZE ? logEntries : (logEntries % LOG_SIZE) + LOG_SIZE;
+   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Kanal</th><th>Ereignis</th><th>Quelle</th></tr>\n";
+   uint32_t start   = switchLogEntries <= LOG_SIZE ? 0                :  switchLogEntries % LOG_SIZE,
+            end     = switchLogEntries <= LOG_SIZE ? switchLogEntries : (switchLogEntries % LOG_SIZE) + LOG_SIZE;
    
    for (uint32_t i=start; i<end; i++){
+      String color;
+      if (switchLogRingbuffer[i % LOG_SIZE].type == 0)
+         color = "red";
+      else if (switchLogRingbuffer[i % LOG_SIZE].type == 1)
+         color = "green";
+      else
+         color = "orange";
+      
       logString += "<tr>"
-      "<td>" + String(logRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
-      "<td>" + String(getUptimeString(logRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
-      "<td>" + String(logRingbuffer[i % LOG_SIZE].dateValid ? getDateString(logRingbuffer[i % LOG_SIZE].dateYear, logRingbuffer[i % LOG_SIZE].dateMonth, logRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
-      "<td>" + String(logRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(logRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
-      "<td>" + String(logRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n";
+      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
+      "<td>" + String(getUptimeString(switchLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
+      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(switchLogRingbuffer[i % LOG_SIZE].dateYear, switchLogRingbuffer[i % LOG_SIZE].dateMonth, switchLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
+      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(switchLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].channel + 1) + "</td>"
+      "<td class=\"" + color + "\">" + SWITCH_LOG_STRINGS[switchLogRingbuffer[i % LOG_SIZE].type] + "</td>"
+      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n";
    }
    
    logString +="</table>\n";
    
    return
-         getHtmlHeader(60, "/log", "log") +
+         getHtmlHeader(60, "/switchLog", "switchLog") +
+         "<H2>Schaltprotokoll</H2>\n"
+         + logString
+         + HTML_FOOTER;
+}
+
+
+String getWebServerConnectionLogPage() {
+   // Log-Tabelle
+   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Ereignis</th></tr>\n";
+   uint32_t start   = connectionLogEntries <= LOG_SIZE ? 0                    :  connectionLogEntries % LOG_SIZE,
+            end     = connectionLogEntries <= LOG_SIZE ? connectionLogEntries : (connectionLogEntries % LOG_SIZE) + LOG_SIZE;
+   
+   for (uint32_t i=start; i<end; i++){
+      logString += "<tr>"
+      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
+      "<td>" + String(getUptimeString(connectionLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
+      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(connectionLogRingbuffer[i % LOG_SIZE].dateYear, connectionLogRingbuffer[i % LOG_SIZE].dateMonth, connectionLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
+      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(connectionLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n";
+   }
+   
+   logString +="</table>\n";
+   
+   return
+         getHtmlHeader(60, "/connectionLog", "connectionLog") +
          "<H2>Verbindungsprotokoll</H2>\n"
          + logString
          + HTML_FOOTER;
@@ -253,150 +290,154 @@ void setupWebServer(){
       webServer.send(200, "text/html", getWebServerMaintenancePage());
    });
    
-   webServer.on("/log", [](){
-      webServer.send(200, "text/html", getWebServerLogPage());
+   webServer.on("/switchLog", [](){
+      webServer.send(200, "text/html", getWebServerSwitchLogPage());
+   });
+   
+   webServer.on("/connectionLog", [](){
+      webServer.send(200, "text/html", getWebServerConnectionLogPage());
    });
    
    webServer.on("/ch1/on", [](){
-      switchRelay(0, true, false);
+      switchRelay(0, true, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/on", [](){
-      switchRelay(1, true, false);
+      switchRelay(1, true, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/on", [](){
-      switchRelay(2, true, false);
+      switchRelay(2, true, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/on", [](){
-      switchRelay(3, true, false);
+      switchRelay(3, true, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/off", [](){
-      switchRelay(0, false, false);
+      switchRelay(0, false, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/off", [](){
-      switchRelay(1, false, false);
+      switchRelay(1, false, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/off", [](){
-      switchRelay(2, false, false);
+      switchRelay(2, false, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/off", [](){
-      switchRelay(3, false, false);
+      switchRelay(3, false, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/toggle", [](){
-      switchRelay(0, !relayStatus[0], false);
+      switchRelay(0, !relayStatus[0], false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/toggle", [](){
-      switchRelay(1, !relayStatus[1], false);
+      switchRelay(1, !relayStatus[1], false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/toggle", [](){
-      switchRelay(2, !relayStatus[2], false);
+      switchRelay(2, !relayStatus[2], false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/toggle", [](){
-      switchRelay(3, !relayStatus[3], false);
+      switchRelay(3, !relayStatus[3], false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/lock", [](){
-      lockRelay(0, true);
+      lockRelay(0, true, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/lock", [](){
-      lockRelay(1, true);
+      lockRelay(1, true, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/lock", [](){
-      lockRelay(2, true);
+      lockRelay(2, true, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/lock", [](){
-      lockRelay(3, true);
+      lockRelay(3, true, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/unlock", [](){
-      lockRelay(0, false);
+      lockRelay(0, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/unlock", [](){
-      lockRelay(1, false);
+      lockRelay(1, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/unlock", [](){
-      lockRelay(2, false);
+      lockRelay(2, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/unlock", [](){
-      lockRelay(3, false);
+      lockRelay(3, false, "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/toggleLock", [](){
-      lockRelay(0, !lockActive[0]);
+      lockRelay(0, !lockActive[0], "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/toggleLock", [](){
-      lockRelay(1, !lockActive[1]);
+      lockRelay(1, !lockActive[1], "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/toggleLock", [](){
-      lockRelay(2, !lockActive[2]);
+      lockRelay(2, !lockActive[2], "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/toggleLock", [](){
-      lockRelay(3, !lockActive[3]);
+      lockRelay(3, !lockActive[3], "Webserver");
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
