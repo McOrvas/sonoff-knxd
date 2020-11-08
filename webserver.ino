@@ -130,6 +130,8 @@ String getWebServerMaintenancePage() {
          "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
          "<tr><td><a href=\"reboot\" title=\"Neustart\">Laufzeit</a></td></td>"
          "<td>" + getUptimeString(getUptimeSeconds()) + "</td></tr>\n"
+         "<tr><td>Freier Speicher</td>"
+         "<td>" + ESP.getFreeHeap() + " byte</td></tr>\n"
          "</table>\n"
          
          "<H2>Netzwerk</H2>\n"
@@ -141,6 +143,7 @@ String getWebServerMaintenancePage() {
          "<tr><td>MAC</td><td>"        + WiFi.macAddress() + "</td></tr>\n"
          "<tr><td>knxd</td><td>"       + String(KNXD_IP) + "</td></tr>\n"
          "<tr><td>SSID</td><td>"       + String(WiFi.SSID()) + "</td></tr>\n"
+         "<tr><td>Kanal</td><td>"      + String(WiFi.channel()) + "</td></tr>\n"
          "<tr><td>RSSI</td><td>"       + String(WiFi.RSSI()) + " dBm</td></tr>\n"
          "</table>\n"
          
