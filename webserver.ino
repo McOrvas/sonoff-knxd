@@ -208,11 +208,11 @@ String getWebServerMaintenancePage() {
          "<td>" + String(receivedTelegrams) + " (&#8960; " + String(receivedTelegrams / (float) getUptimeSeconds()) +" / s)</td></tr>\n"
 
          + String(GA_DATE_VALID
-            ? "<tr><td>Aktuelles Datum" + String(dateValid ? " (empfangen vor " + getUptimeString((currentMillis - dateTelegramReceivedMillis) / 1000) + ")": "") + "</td>"
+            ? "<tr><td>Aktuelles Datum" + String(dateValid ? " (empfangen vor " + String(getUptimeString((currentMillis - dateTelegramReceivedMillis) / 1000)) + ")": "") + "</td>"
               "<td>" + String(dateValid ? getDateString(dateYear, dateMonth, dateDay) : "-") + "</td></tr>\n"
             : "")
          + String(GA_TIME_VALID
-            ? "<tr><td>Aktuelle Uhrzeit" + String(timeValid ? " (empfangen vor " + getUptimeString((currentMillis - timeTelegramReceivedMillis) / 1000) + ")": "") + "</td>"
+            ? "<tr><td>Aktuelle Uhrzeit" + String(timeValid ? " (empfangen vor " + String(getUptimeString((currentMillis - timeTelegramReceivedMillis) / 1000)) + ")": "") + "</td>"
               "<td>" + String(timeValid ? getTimeString(getUpdatedTimeSeconds()) : "-") + "</td></tr>\n"
             : "") +
          "</table>\n"

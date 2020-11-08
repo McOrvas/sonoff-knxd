@@ -34,23 +34,23 @@
  * *************************
  */
 
-const String   SOFTWARE_VERSION                 = "2020-10-04";
+const char     *SOFTWARE_VERSION                      = "2020-11-08",
 
-char* LOG_WLAN_CONNECTED                        = "WLAN-Verbindung hergestellt";
-char* LOG_WLAN_DISCONNECTED                     = "WLAN-Verbindung getrennt";
-char* LOG_KNXD_CONNECTION_INITIATED             = "Initiale Verbindung zum knxd hergestellt";
-char* LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT     = "Zeitüberschreitungen bei der Verbindungsbestätigung durch den knxd";
-char* LOG_KNXD_CONNECTION_CONFIRMED             = "Verbindung vom knxd bestätigt";
-char* LOG_KNXD_DISCONNECTED                     = "Verbindung zum knxd getrennt";
-char* LOG_MISSING_TELEGRAM_TIMEOUT              = "Verbindungsabbruch wegen Zeitüberschreitung zwischen zwei Telegrammen";
-char* LOG_INCOMPLETE_TELEGRAM_TIMEOUT           = "Verbindungsabbruch wegen unvollständig empfangenem Telegramm";
+               *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
+               *LOG_WLAN_DISCONNECTED                 = "WLAN-Verbindung getrennt",
+               *LOG_KNXD_CONNECTION_INITIATED         = "Initiale Verbindung zum knxd hergestellt",
+               *LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT = "Zeitüberschreitungen bei der Verbindungsbestätigung durch den knxd",
+               *LOG_KNXD_CONNECTION_CONFIRMED         = "Verbindung vom knxd bestätigt",
+               *LOG_KNXD_DISCONNECTED                 = "Verbindung zum knxd getrennt",
+               *LOG_MISSING_TELEGRAM_TIMEOUT          = "Verbindungsabbruch wegen Zeitüberschreitung zwischen zwei Telegrammen",
+               *LOG_INCOMPLETE_TELEGRAM_TIMEOUT       = "Verbindungsabbruch wegen unvollständig empfangenem Telegramm";
 
 const uint8_t  LOG_OFF    = 0,
                LOG_ON     = 1,
                LOG_LOCK   = 2,
                LOG_UNLOCK = 3;
 
-const String   SWITCH_LOG_STRINGS[] = {"Ausgeschaltet", "Eingeschaltet", "Gesperrt", "Entsperrt"};
+const char     *SWITCH_LOG_STRINGS[] = {"Ausgeschaltet", "Eingeschaltet", "Gesperrt", "Entsperrt"};
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
@@ -118,7 +118,7 @@ uint32_t        connectionLogEntries = 0;
 uint32_t        switchLogEntries = 0;
 
 struct logConnectionEvent {
-   char*       message;
+   const char* message;
    boolean     timeValid,
                dateValid;
    uint32_t    entry,
@@ -152,7 +152,9 @@ void setup() {
    digitalWrite(GPIO_LED, !relayStatus[0]);
    
    Serial.println("\n\n" + HOST_NAME + " (" + HOST_DESCRIPTION + ")");
-   Serial.println("Software-Version: " + SOFTWARE_VERSION + "\n");
+   Serial.print("Software-Version: ");
+   Serial.print(SOFTWARE_VERSION);
+   Serial.println("\n");
    
    for (uint8_t ch=0; ch<CHANNELS; ch++){
       pinMode(GPIO_BUTTON[ch], INPUT_PULLUP);
@@ -163,7 +165,9 @@ void setup() {
       else
          digitalWrite(GPIO_RELAY[ch], !relayStatus[ch]);
       
-      Serial.print("Kanal " + String(ch + 1) + " GAs schalten: ");
+      Serial.print("Kanal ");
+      Serial.print(ch + 1);
+      Serial.print(" GAs schalten: ");
       for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
          if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0) {
             Serial.print(GA_SWITCH[ch][i][0]);
@@ -176,7 +180,9 @@ void setup() {
       }
       Serial.println();
       
-      Serial.print("Kanal " + String(ch + 1) + " GAs sperren:  ");
+      Serial.print("Kanal ");
+      Serial.print(ch + 1);
+      Serial.print(" GAs sperren:  ");
       for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
          if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0) {
             Serial.print(GA_LOCK[ch][0][0]);
@@ -189,7 +195,9 @@ void setup() {
       }
       Serial.println();
 
-      Serial.print("Kanal " + String(ch + 1) + " GA  Status:   ");
+      Serial.print("Kanal ");
+      Serial.print(ch + 1);
+      Serial.print(" GA  Status:   ");
       if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0) {
          Serial.print(GA_STATUS[ch][0]);
          Serial.print("/");
@@ -200,10 +208,22 @@ void setup() {
       Serial.println();
    }
       
-   Serial.println("GA Zeit:              " + String(GA_TIME[0]) + "/" + String(GA_TIME[1]) + "/" + String(GA_TIME[2]));
-   Serial.println("GA Datum:             " + String(GA_DATE[0]) + "/" + String(GA_DATE[1]) + "/" + String(GA_DATE[2]));
+   Serial.print("GA Zeit:              ");
+   Serial.print(GA_TIME[0]);
+   Serial.print("/");
+   Serial.print(GA_TIME[1]);
+   Serial.print("/");
+   Serial.println(GA_TIME[2]);
+   Serial.print("GA Datum:             ");
+   Serial.print(GA_DATE[0]);
+   Serial.print("/");
+   Serial.print(GA_DATE[1]);
+   Serial.print("/");
+   Serial.println(GA_DATE[2]);
       
-   Serial.print("\nVerbinde mit WLAN '" + String(SSID) + "'");
+   Serial.print("\nVerbinde mit WLAN '");
+   Serial.print(SSID);
+   Serial.print("'");
    
    /* Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,
    *   would try to act as both a client and an access-point and could cause
@@ -245,7 +265,9 @@ void loop() {
 
       // Check if a channel has to be switched off by a timer
       if (relayStatus[ch] && autoOffTimerActive[ch] && (currentMillis - autoOffTimerStartMillis[ch]) >= (AUTO_OFF_TIMER_S[ch] * 1000)){
-         Serial.println("Auto off timer for channel " + String(ch + 1) + " has expired!");
+         Serial.print("Auto off timer for channel ");
+         Serial.print(ch + 1);
+         Serial.println(" has expired!");
          // Set to false even if the channel cannot be switched off due to an active lock.
          autoOffTimerActive[ch] = false;
          switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, "Ausschaltautomatik (" + String(AUTO_OFF_TIMER_S[ch]) + " s)");
@@ -287,7 +309,9 @@ void knxLoop(){
    
    // Der Verbindungsaufbau zum knxd wurde nicht rechtzeitig bestätigt
    else if (!knxdConnectionConfirmed && (currentMillis - knxdConnectionInitiatedMillis) >= CONNECTION_CONFIRMATION_TIMEOUT_MS){
-      Serial.println("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von " + String(CONNECTION_CONFIRMATION_TIMEOUT_MS) + " ms bestätigt.");      
+      Serial.print("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von ");
+      Serial.print(CONNECTION_CONFIRMATION_TIMEOUT_MS);
+      Serial.println(" ms bestätigt.");
       logConnectionEvent(LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT);
       knxdConnectionHandshakeTimeouts++;
       resetKnxdConnection();
@@ -295,7 +319,9 @@ void knxLoop(){
    
    // Die Verbindung steht prinzipiell, aber seit MISSING_TELEGRAM_TIMEOUT_MIN wurde kein Telegramm mehr empfangen und deshalb wird ein Timeout ausgelöst
    else if (missingTelegramTimeoutEnabled && MISSING_TELEGRAM_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= MISSING_TELEGRAM_TIMEOUT_MIN * 60000){
-      Serial.println("Timeout: No telegram received during " + String(MISSING_TELEGRAM_TIMEOUT_MIN) + " minutes");      
+      Serial.print("Timeout: No telegram received during ");
+      Serial.print(MISSING_TELEGRAM_TIMEOUT_MIN);
+      Serial.println();
       logConnectionEvent(LOG_MISSING_TELEGRAM_TIMEOUT);
       missingTelegramTimeouts++;
       resetKnxdConnection();
@@ -391,8 +417,9 @@ void knxLoop(){
                for (uint8_t ch=0; ch<CHANNELS; ch++){
                   if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0
                       && messageResponse[4] == (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1] && messageResponse[5] == GA_STATUS[ch][2]) {
-                     Serial.println("Leseanforderung Status Kanal " + String(ch + 1));
-            
+                     Serial.print("Leseanforderung Status Kanal ");
+                     Serial.println(ch + 1);
+                     
                      const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1], GA_STATUS[ch][2], 0x00, 0x40 | relayStatus[ch]};
                      client.write(groupValueResponse, sizeof(groupValueResponse));
                   }
@@ -413,7 +440,8 @@ void knxLoop(){
                   dateValid = true;
                   dateTelegramReceivedMillis = currentMillis;
                   
-                  Serial.println("Date telegram received: " + getDateString(dateYear, dateMonth, dateDay));
+                  Serial.print("Date telegram received: ");
+                  Serial.println(getDateString(dateYear, dateMonth, dateDay));
                }
                
                // Time telegram
@@ -426,7 +454,8 @@ void knxLoop(){
                   timeValid   = true;
                   timeTelegramReceivedMillis = currentMillis;
                   
-                  Serial.println("Time telegram received: " + getTimeString(timeWeekday, timeHours, timeMinutes, timeSeconds));
+                  Serial.print("Time telegram received: ");
+                  Serial.println(getTimeString(timeWeekday, timeHours, timeMinutes, timeSeconds));
                }
             }
          }
@@ -437,7 +466,9 @@ void knxLoop(){
       
       // Incomplete telegram received timeout
       else if (incompleteTelegramTimeoutEnabled && INCOMPLETE_TELEGRAM_TIMEOUT_MS > 0 && messageLength > 0 && (currentMillis - lastTelegramHeaderReceivedMillis) >= INCOMPLETE_TELEGRAM_TIMEOUT_MS){
-         Serial.println("Timeout: Incomplete received telegram after " + String(INCOMPLETE_TELEGRAM_TIMEOUT_MS) + " ms");         
+         Serial.print("Timeout: Incomplete received telegram after ");
+         Serial.print(INCOMPLETE_TELEGRAM_TIMEOUT_MS);
+         Serial.println(" ms");
          logConnectionEvent(LOG_INCOMPLETE_TELEGRAM_TIMEOUT);
          incompleteTelegramTimeouts++;
          resetKnxdConnection();         
@@ -449,7 +480,8 @@ void knxLoop(){
 boolean connectToKnxd(){
    resetKnxdConnection();
    
-   Serial.println("Verbinde mit knxd auf " + String(KNXD_IP));
+   Serial.print("Verbinde mit knxd auf ");
+   Serial.println(KNXD_IP);
    
    if (client.connect(KNXD_IP, KNXD_PORT)) {
       client.setNoDelay(true);
@@ -648,47 +680,51 @@ uint32_t getUptimeSeconds(){
 }
 
 
-String getUptimeString(uint32_t totalSeconds){
+char* getUptimeString(uint32_t totalSeconds){
    uint32_t seconds       = totalSeconds % 60,
             minutes       = (totalSeconds / 60) % 60,
             hours         = (totalSeconds / (60 * 60)) % 24,
             days          = totalSeconds / (60 * 60 * 24);
       
-   char timeString[8];
-   sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
+   static char timeString[22];   
    
-   if (days == 0)
+   if (days == 0) {
+      snprintf(timeString, 9, "%02d:%02d:%02d", hours, minutes, seconds);
       return timeString;
-   else if (days == 1)
-      return "1 Tag, " + String(timeString);
-   else
-      return String(days) + " Tage, " + timeString;
+   }
+   else if (days == 1) {
+      snprintf(timeString, 22, "1 Tag, %02d:%02d:%02d", hours, minutes, seconds);
+      return timeString;
+   }
+   else {
+      snprintf(timeString, 22, "%d Tage, %02d:%02d:%02d", days, hours, minutes, seconds);
+      return timeString;
+   }
 }
 
 
-String getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t seconds){
-   char timeString[8];
-   sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);                  
-   
-   String dayString;
-   
-        if (weekday == 1) dayString = "Montag";
-   else if (weekday == 2) dayString = "Dienstag";
-   else if (weekday == 3) dayString = "Mittwoch";
-   else if (weekday == 4) dayString = "Donnerstag";
-   else if (weekday == 5) dayString = "Freitag";
-   else if (weekday == 6) dayString = "Samstag";
-   else if (weekday == 7) dayString = "Sonntag";
+char* getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t seconds){
+   static char timeString[22];
+   snprintf(timeString, 9, "%02d:%02d:%02d", hours, minutes, seconds);                  
    
    // Check if the weekday is valid
    if (weekday == 0)
       return timeString;
-   else
-      return String(timeString) + " (" + dayString + ")";
+   else {
+           if (weekday == 1) strcat(timeString, " (Montag)");
+      else if (weekday == 2) strcat(timeString, " (Dienstag)");
+      else if (weekday == 3) strcat(timeString, " (Mittwoch)");
+      else if (weekday == 4) strcat(timeString, " (Donnerstag)");
+      else if (weekday == 5) strcat(timeString, " (Freitag)");
+      else if (weekday == 6) strcat(timeString, " (Samstag)");
+      else if (weekday == 7) strcat(timeString, " (Sonntag)");
+      
+      return timeString;
+   }
 }
 
 
-String getTimeString(uint32_t totalSeconds){
+char* getTimeString(uint32_t totalSeconds){
    uint32_t seconds       = totalSeconds % 60,
             minutes       = (totalSeconds / 60) % 60,
             hours         = (totalSeconds / (60 * 60)) % 24,
@@ -710,14 +746,14 @@ uint32_t getUpdatedTimeSeconds(){
 }
 
 
-String getDateString(uint8_t year, uint8_t month, uint8_t day){   
-   char dateString[10];
-   sprintf(dateString, "%04d-%02d-%02d", year >= 90 ? 1900 + year : 2000 + year, month, day);
+char* getDateString(uint8_t year, uint8_t month, uint8_t day){   
+   static char dateString[11];
+   snprintf(dateString, 11, "%04d-%02d-%02d", year >= 90 ? 1900 + year : 2000 + year, month, day);
    return dateString;
 }
 
 
-void logConnectionEvent(char* message){
+void logConnectionEvent(const char* message){
    connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].entry         = connectionLogEntries;
    connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timeValid     = timeValid;
    connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
