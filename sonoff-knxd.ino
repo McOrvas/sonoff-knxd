@@ -34,7 +34,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2020-11-08",
+const char     *SOFTWARE_VERSION                      = "2020-11-09",
 
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
                *LOG_WLAN_DISCONNECTED                 = "WLAN-Verbindung getrennt",
@@ -239,7 +239,9 @@ void setup() {
    }
    
    Serial.print("\nVerbindung hergestellt. IP-Adresse: ");
-   Serial.println(WiFi.localIP());
+   Serial.print(WiFi.localIP());
+   Serial.print(", WLAN-Kanal: ");
+   Serial.println(WiFi.channel());
    
    setupWebServer();
    
@@ -688,39 +690,27 @@ char* getUptimeString(uint32_t totalSeconds){
       
    static char timeString[22];   
    
-   if (days == 0) {
-      snprintf(timeString, 9, "%02d:%02d:%02d", hours, minutes, seconds);
-      return timeString;
-   }
-   else if (days == 1) {
-      snprintf(timeString, 22, "1 Tag, %02d:%02d:%02d", hours, minutes, seconds);
-      return timeString;
-   }
-   else {
-      snprintf(timeString, 22, "%d Tage, %02d:%02d:%02d", days, hours, minutes, seconds);
-      return timeString;
-   }
+        if (days == 0) snprintf(timeString,  9,          "%02d:%02d:%02d", hours, minutes, seconds);
+   else if (days == 1) snprintf(timeString, 22,   "1 Tag, %02d:%02d:%02d", hours, minutes, seconds);    
+   else                snprintf(timeString, 22, "%d Tage, %02d:%02d:%02d", days, hours, minutes, seconds);
+   
+   return timeString;
 }
 
 
 char* getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t seconds){
    static char timeString[22];
-   snprintf(timeString, 9, "%02d:%02d:%02d", hours, minutes, seconds);                  
    
-   // Check if the weekday is valid
-   if (weekday == 0)
-      return timeString;
-   else {
-           if (weekday == 1) strcat(timeString, " (Montag)");
-      else if (weekday == 2) strcat(timeString, " (Dienstag)");
-      else if (weekday == 3) strcat(timeString, " (Mittwoch)");
-      else if (weekday == 4) strcat(timeString, " (Donnerstag)");
-      else if (weekday == 5) strcat(timeString, " (Freitag)");
-      else if (weekday == 6) strcat(timeString, " (Samstag)");
-      else if (weekday == 7) strcat(timeString, " (Sonntag)");
+        if (weekday == 1) snprintf(timeString, 22, "%02d:%02d:%02d (Montag)",     hours, minutes, seconds);
+   else if (weekday == 2) snprintf(timeString, 22, "%02d:%02d:%02d (Dienstag)",   hours, minutes, seconds);
+   else if (weekday == 3) snprintf(timeString, 22, "%02d:%02d:%02d (Mittwoch)",   hours, minutes, seconds);
+   else if (weekday == 4) snprintf(timeString, 22, "%02d:%02d:%02d (Donnerstag)", hours, minutes, seconds);
+   else if (weekday == 5) snprintf(timeString, 22, "%02d:%02d:%02d (Freitag)",    hours, minutes, seconds);
+   else if (weekday == 6) snprintf(timeString, 22, "%02d:%02d:%02d (Samstag)",    hours, minutes, seconds);
+   else if (weekday == 7) snprintf(timeString, 22, "%02d:%02d:%02d (Sonntag)",    hours, minutes, seconds);
+   else                   snprintf(timeString,  9, "%02d:%02d:%02d",              hours, minutes, seconds);
       
-      return timeString;
-   }
+   return timeString;   
 }
 
 
