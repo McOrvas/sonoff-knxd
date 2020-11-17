@@ -5,12 +5,12 @@
  */
 
 // SSID and password
-const char*  SSID             = "ssid";
-const char*  PASSWORD         = "password";
+const char *SSID             = "ssid",
+           *PASSWORD         = "password",
 
 // Host name and description
-const String HOST_NAME        = "Sonoff-S20-1",
-             HOST_DESCRIPTION = "Description";
+           *HOST_NAME        = "Sonoff-S20-1",
+           *HOST_DESCRIPTION = "Description";
 
 
 /* 

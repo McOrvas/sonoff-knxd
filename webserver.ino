@@ -141,10 +141,11 @@ String getWebServerMaintenancePage() {
          "<tr><td>Netzmaske</td><td>"  + WiFi.subnetMask().toString() + "</td></tr>\n"
          "<tr><td>Gateway</td><td>"    + WiFi.gatewayIP().toString() + "</td></tr>\n"
          "<tr><td>MAC</td><td>"        + WiFi.macAddress() + "</td></tr>\n"
-         "<tr><td>knxd</td><td>"       + String(KNXD_IP) + "</td></tr>\n"
          "<tr><td>SSID</td><td>"       + String(WiFi.SSID()) + "</td></tr>\n"
+         "<tr><td>BSSID</td><td>"      + WiFi.BSSIDstr() + "</td></tr>\n"
          "<tr><td>Kanal</td><td>"      + String(WiFi.channel()) + "</td></tr>\n"
          "<tr><td>RSSI</td><td>"       + String(WiFi.RSSI()) + " dBm</td></tr>\n"
+         "<tr><td>knxd</td><td>"       + String(KNXD_IP) + "</td></tr>\n"
          "</table>\n"
          
          "<H2>KNX-Konfiguration</H2>\n"
@@ -232,12 +233,20 @@ String getWebServerSwitchLogPage() {
    
    for (uint32_t i=start; i<end; i++){
       String color;
-      if (switchLogRingbuffer[i % LOG_SIZE].type == 0)
+      if (switchLogRingbuffer[i % LOG_SIZE].type == SWITCH_LOG_OFF)
          color = "red";
-      else if (switchLogRingbuffer[i % LOG_SIZE].type == 1)
+      else if (switchLogRingbuffer[i % LOG_SIZE].type == SWITCH_LOG_ON)
          color = "green";
       else
          color = "orange";
+      
+      const char* message = switchLogRingbuffer[i % LOG_SIZE].message;
+      const uint8_t *ga = switchLogRingbuffer[i % LOG_SIZE].ga;
+      String text = "-";
+      if (message != 0)
+         text = message;
+      else if (ga != 0)
+         text = String(*ga) + "/" + String(*(ga+1)) + "/" + String(*(ga+2));
       
       logString += "<tr>"
       "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
@@ -245,8 +254,8 @@ String getWebServerSwitchLogPage() {
       "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(switchLogRingbuffer[i % LOG_SIZE].dateYear, switchLogRingbuffer[i % LOG_SIZE].dateMonth, switchLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
       "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(switchLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
       "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].channel + 1) + "</td>"
-      "<td class=\"" + color + "\">" + SWITCH_LOG_STRINGS[switchLogRingbuffer[i % LOG_SIZE].type] + "</td>"
-      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n";
+      "<td class=\"" + color + "\">" + switchLogRingbuffer[i % LOG_SIZE].type + "</td>"
+      "<td>" + text + "</td></tr>\n";
    }
    
    logString +="</table>\n";
@@ -261,16 +270,22 @@ String getWebServerSwitchLogPage() {
 
 String getWebServerConnectionLogPage() {
    // Log-Tabelle
-   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Ereignis</th></tr>\n";
+   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>BSSID</th><th>Kanal</th><th>Ereignis</th></tr>\n";
    uint32_t start   = connectionLogEntries <= LOG_SIZE ? 0                    :  connectionLogEntries % LOG_SIZE,
-            end     = connectionLogEntries <= LOG_SIZE ? connectionLogEntries : (connectionLogEntries % LOG_SIZE) + LOG_SIZE;
-   
+            end     = connectionLogEntries <= LOG_SIZE ? connectionLogEntries : (connectionLogEntries % LOG_SIZE) + LOG_SIZE;   
+   char     bssidString[18];
+      
    for (uint32_t i=start; i<end; i++){
+      const uint8_t *bssid = connectionLogRingbuffer[i % LOG_SIZE].wlanBssid;
+      snprintf(bssidString, 18, "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+      
       logString += "<tr>"
       "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
       "<td>" + String(getUptimeString(connectionLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
       "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(connectionLogRingbuffer[i % LOG_SIZE].dateYear, connectionLogRingbuffer[i % LOG_SIZE].dateMonth, connectionLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
       "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(connectionLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+      "<td>" + bssidString + "</td>"
+      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].wlanChannel) + "</td>"
       "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n";
    }
    
@@ -302,145 +317,145 @@ void setupWebServer(){
    });
    
    webServer.on("/ch1/on", [](){
-      switchRelay(0, true, false, "Webserver");
+      switchRelay(0, true, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/on", [](){
-      switchRelay(1, true, false, "Webserver");
+      switchRelay(1, true, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/on", [](){
-      switchRelay(2, true, false, "Webserver");
+      switchRelay(2, true, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/on", [](){
-      switchRelay(3, true, false, "Webserver");
+      switchRelay(3, true, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/off", [](){
-      switchRelay(0, false, false, "Webserver");
+      switchRelay(0, false, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/off", [](){
-      switchRelay(1, false, false, "Webserver");
+      switchRelay(1, false, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/off", [](){
-      switchRelay(2, false, false, "Webserver");
+      switchRelay(2, false, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/off", [](){
-      switchRelay(3, false, false, "Webserver");
+      switchRelay(3, false, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/toggle", [](){
-      switchRelay(0, !relayStatus[0], false, "Webserver");
+      switchRelay(0, !relayStatus[0], false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/toggle", [](){
-      switchRelay(1, !relayStatus[1], false, "Webserver");
+      switchRelay(1, !relayStatus[1], false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/toggle", [](){
-      switchRelay(2, !relayStatus[2], false, "Webserver");
+      switchRelay(2, !relayStatus[2], false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/toggle", [](){
-      switchRelay(3, !relayStatus[3], false, "Webserver");
+      switchRelay(3, !relayStatus[3], false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/lock", [](){
-      lockRelay(0, true, "Webserver");
+      lockRelay(0, true, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/lock", [](){
-      lockRelay(1, true, "Webserver");
+      lockRelay(1, true, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/lock", [](){
-      lockRelay(2, true, "Webserver");
+      lockRelay(2, true, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/lock", [](){
-      lockRelay(3, true, "Webserver");
+      lockRelay(3, true, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/unlock", [](){
-      lockRelay(0, false, "Webserver");
+      lockRelay(0, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/unlock", [](){
-      lockRelay(1, false, "Webserver");
+      lockRelay(1, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/unlock", [](){
-      lockRelay(2, false, "Webserver");
+      lockRelay(2, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/unlock", [](){
-      lockRelay(3, false, "Webserver");
+      lockRelay(3, false, SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch1/toggleLock", [](){
-      lockRelay(0, !lockActive[0], "Webserver");
+      lockRelay(0, !lockActive[0], SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch2/toggleLock", [](){
-      lockRelay(1, !lockActive[1], "Webserver");
+      lockRelay(1, !lockActive[1], SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch3/toggleLock", [](){
-      lockRelay(2, !lockActive[2], "Webserver");
+      lockRelay(2, !lockActive[2], SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });
    
    webServer.on("/ch4/toggleLock", [](){
-      lockRelay(3, !lockActive[3], "Webserver");
+      lockRelay(3, !lockActive[3], SWITCH_LOG_WEBSERVER, 0);
       webServer.sendHeader("Location", String("/"), true);
       webServer.send(302, "text/plain", "");
    });

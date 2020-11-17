@@ -34,7 +34,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2020-11-09",
+const char     *SOFTWARE_VERSION                      = "2020-11-17",
 
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
                *LOG_WLAN_DISCONNECTED                 = "WLAN-Verbindung getrennt",
@@ -43,14 +43,17 @@ const char     *SOFTWARE_VERSION                      = "2020-11-09",
                *LOG_KNXD_CONNECTION_CONFIRMED         = "Verbindung vom knxd bestätigt",
                *LOG_KNXD_DISCONNECTED                 = "Verbindung zum knxd getrennt",
                *LOG_MISSING_TELEGRAM_TIMEOUT          = "Verbindungsabbruch wegen Zeitüberschreitung zwischen zwei Telegrammen",
-               *LOG_INCOMPLETE_TELEGRAM_TIMEOUT       = "Verbindungsabbruch wegen unvollständig empfangenem Telegramm";
-
-const uint8_t  LOG_OFF    = 0,
-               LOG_ON     = 1,
-               LOG_LOCK   = 2,
-               LOG_UNLOCK = 3;
-
-const char     *SWITCH_LOG_STRINGS[] = {"Ausgeschaltet", "Eingeschaltet", "Gesperrt", "Entsperrt"};
+               *LOG_INCOMPLETE_TELEGRAM_TIMEOUT       = "Verbindungsabbruch wegen unvollständig empfangenem Telegramm",
+               
+               *SWITCH_LOG_OFF                        = "Ausgeschaltet",
+               *SWITCH_LOG_ON                         = "Eingeschaltet",
+               *SWITCH_LOG_LOCK                       = "Gesperrt",
+               *SWITCH_LOG_UNLOCK                     = "Entsperrt",
+               *SWITCH_LOG_BUTTON                     = "Taster",
+               *SWITCH_LOG_ON_BY_LOCK                 = "Sperrautomatik",
+               *SWITCH_LOG_OFF_BY_UNLOCK              = "Entsperrautomatik",
+               *SWITCH_LOG_AUTO_OFF_TIMER             = "Ausschaltautomatik",
+               *SWITCH_LOG_WEBSERVER                  = "Webserver";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
@@ -118,29 +121,32 @@ uint32_t        connectionLogEntries = 0;
 uint32_t        switchLogEntries = 0;
 
 struct logConnectionEvent {
-   const char* message;
+   const char  *message;
    boolean     timeValid,
                dateValid;
    uint32_t    entry,
                uptimeSeconds,
                timeSeconds;
+   int32_t     wlanChannel;
    uint8_t     dateDay,
                dateMonth,
-               dateYear;
+               dateYear,
+               wlanBssid[6];
 } connectionLogRingbuffer[LOG_SIZE];
 
 struct logSwitchEvent {
-   String      message;
-   uint8_t     channel,
-               type;
-   boolean     timeValid,
-               dateValid;
-   uint32_t    entry,
-               uptimeSeconds,
-               timeSeconds;
-   uint8_t     dateDay,
-               dateMonth,
-               dateYear;
+   const uint8_t *ga;
+   const char    *type,
+                 *message;
+   uint8_t       channel;   
+   boolean       timeValid,
+                 dateValid;
+   uint32_t      entry,
+                 uptimeSeconds,
+                 timeSeconds;
+   uint8_t       dateDay,
+                 dateMonth,
+                 dateYear;
 } switchLogRingbuffer[LOG_SIZE];
 
 
@@ -151,7 +157,11 @@ void setup() {
    pinMode(GPIO_LED, OUTPUT);
    digitalWrite(GPIO_LED, !relayStatus[0]);
    
-   Serial.println("\n\n" + HOST_NAME + " (" + HOST_DESCRIPTION + ")");
+   Serial.print("\n\n");
+   Serial.print(HOST_NAME);
+   Serial.print(" (");
+   Serial.print(HOST_DESCRIPTION);
+   Serial.println(")");
    Serial.print("Software-Version: ");
    Serial.print(SOFTWARE_VERSION);
    Serial.println("\n");
@@ -238,11 +248,13 @@ void setup() {
       Serial.print(".");
    }
    
-   Serial.print("\nVerbindung hergestellt. IP-Adresse: ");
+   Serial.print("\nVerbindung hergestellt mit ");
+   Serial.print(WiFi.BSSIDstr());
+   Serial.print(". IP-Adresse: ");
    Serial.print(WiFi.localIP());
    Serial.print(", WLAN-Kanal: ");
    Serial.println(WiFi.channel());
-   
+
    setupWebServer();
    
    currentMillis = millis();   
@@ -272,7 +284,7 @@ void loop() {
          Serial.println(" has expired!");
          // Set to false even if the channel cannot be switched off due to an active lock.
          autoOffTimerActive[ch] = false;
-         switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, "Ausschaltautomatik (" + String(AUTO_OFF_TIMER_S[ch]) + " s)");
+         switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, SWITCH_LOG_AUTO_OFF_TIMER, 0);
       }
    }
 
@@ -396,7 +408,7 @@ void knxLoop(){
                      if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0
                          && messageResponse[4] == (GA_SWITCH[0][i][0] << 3) + GA_SWITCH[0][i][1]
                          && messageResponse[5] == GA_SWITCH[0][i][2]){
-                        switchRelay(ch, messageResponse[7] & 0x0F, false, String(GA_SWITCH[ch][i][0]) + "/" + String(GA_SWITCH[ch][i][1]) + "/" + String(GA_SWITCH[ch][i][2]));
+                         switchRelay(ch, messageResponse[7] & 0x0F, false, 0, &GA_SWITCH[ch][i][0]);
                      }
                   }
                   for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
@@ -404,7 +416,7 @@ void knxLoop(){
                      if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0
                          && messageResponse[4] == (GA_LOCK[0][i][0] << 3) + GA_LOCK[0][i][1]
                          && messageResponse[5] == GA_LOCK[0][i][2]){
-                        lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch], String(GA_LOCK[ch][i][0]) + "/" + String(GA_LOCK[ch][i][1]) + "/" + String(GA_LOCK[ch][i][2]));
+                         lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch], 0, &GA_LOCK[ch][i][0]);
                      }
                   }
                }
@@ -527,9 +539,9 @@ void checkButton(uint8_t ch){
       else if (buttonDebouncedState[ch] == !BUTTON_INVERTED && (currentMillis - buttonDebounceMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
          buttonDebouncedState[ch] = BUTTON_INVERTED;
          if (BUTTON_TOGGLE)
-            switchRelay(ch, !relayStatus[ch], false, "Taster");
+            switchRelay(ch, !relayStatus[ch], false, SWITCH_LOG_BUTTON, 0);
          else
-            switchRelay(ch, true, false, "Taster");
+            switchRelay(ch, true, false, SWITCH_LOG_BUTTON, 0);
       }
       
       buttonLastState[ch] = BUTTON_INVERTED;
@@ -544,7 +556,7 @@ void checkButton(uint8_t ch){
          buttonDebouncedState[ch] = !BUTTON_INVERTED;
          // Switch relay off if button is not in toggle mode
          if (!BUTTON_TOGGLE && relayStatus[ch])
-            switchRelay(ch, false, false, "Taster");
+            switchRelay(ch, false, false, SWITCH_LOG_BUTTON, 0);
       }
       
       buttonLastState[ch] = !BUTTON_INVERTED;
@@ -590,7 +602,7 @@ void ledBlink(){
 }
 
 
-void switchRelay(uint8_t ch, boolean on, boolean overrideLock, String source){
+void switchRelay(const uint8_t ch, const boolean on, const boolean overrideLock, const char *source, const uint8_t *ga){
    if (ch >= CHANNELS){
       Serial.println("Ungültiger Kanal: " + String(ch + 1));
    }
@@ -606,12 +618,12 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock, String source){
                autoOffTimerStartMillis[ch] = currentMillis;
                autoOffTimerActive[ch] = true;
             }
-            logSwitchEvent(ch, LOG_ON, source);
+            logSwitchEvent(ch, SWITCH_LOG_ON, source, ga);
             Serial.println("Kanal " + String(ch + 1) + " wird eingeschaltet");
          }
          else{
             autoOffTimerActive[ch] = false;
-            logSwitchEvent(ch, LOG_OFF, source);
+            logSwitchEvent(ch, SWITCH_LOG_OFF, source, ga);
             Serial.println("Kanal " + String(ch + 1) + " wird ausgeschaltet");
          }
          
@@ -630,19 +642,19 @@ void switchRelay(uint8_t ch, boolean on, boolean overrideLock, String source){
 }
 
 
-void lockRelay(uint8_t ch, boolean lock, String source){
+void lockRelay(const uint8_t ch, const boolean lock, const char *source, const uint8_t *ga){
    if (ch >= CHANNELS){
       Serial.println("Ungültiger Kanal: " + String(ch + 1));
    }
    else {      
       if (lock && !lockActive[ch]){
          Serial.println("Kanal " + String(ch + 1) + " wird gesperrt!");
-         logSwitchEvent(ch, LOG_LOCK, source);
+         logSwitchEvent(ch, SWITCH_LOG_LOCK, source, ga);
          
          if (SWITCH_OFF_WHEN_LOCKED[ch])
-            switchRelay(ch, false, false, "Sperrautomatik");
+            switchRelay(ch, false, false, SWITCH_LOG_ON_BY_LOCK, 0);
          else if (SWITCH_ON_WHEN_LOCKED[ch])
-            switchRelay(ch, true, false, "Sperrautomatik");
+            switchRelay(ch, true, false, SWITCH_LOG_ON_BY_LOCK, 0);
          
          lockActive[ch] = true;         
       }                  
@@ -650,12 +662,12 @@ void lockRelay(uint8_t ch, boolean lock, String source){
          lockActive[ch] = false;
          
          Serial.println("Kanal " + String(ch + 1) + " wird entsperrt!");
-         logSwitchEvent(ch, LOG_UNLOCK, source);
+         logSwitchEvent(ch, SWITCH_LOG_UNLOCK, source, ga);
          
          if (SWITCH_OFF_WHEN_UNLOCKED[ch])
-            switchRelay(ch, false, false, "Entsperrautomatik");
+            switchRelay(ch, false, false, SWITCH_LOG_OFF_BY_UNLOCK, 0);
          else if (SWITCH_ON_WHEN_UNLOCKED[ch])
-            switchRelay(ch, true, false, "Entsperrautomatik");
+            switchRelay(ch, true, false, SWITCH_LOG_OFF_BY_UNLOCK, 0);
       }
    }
 }
@@ -752,12 +764,14 @@ void logConnectionEvent(const char* message){
    connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateMonth     = dateMonth;
    connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateYear      = dateYear;
    connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].uptimeSeconds = getUptimeSeconds();
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].message       = message;   
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].wlanChannel   = WiFi.channel();
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].message       = message;
+   memcpy(connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].wlanBssid, WiFi.BSSID(), 6);
    connectionLogEntries++;
 }
 
 
-void logSwitchEvent(uint8_t ch, uint8_t type, String message){
+void logSwitchEvent(const uint8_t ch, const char* type, const char* message, const uint8_t *ga){
    switchLogRingbuffer[switchLogEntries % LOG_SIZE].entry         = switchLogEntries;
    switchLogRingbuffer[switchLogEntries % LOG_SIZE].timeValid     = timeValid;
    switchLogRingbuffer[switchLogEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
@@ -769,5 +783,6 @@ void logSwitchEvent(uint8_t ch, uint8_t type, String message){
    switchLogRingbuffer[switchLogEntries % LOG_SIZE].message       = message;
    switchLogRingbuffer[switchLogEntries % LOG_SIZE].channel       = ch;
    switchLogRingbuffer[switchLogEntries % LOG_SIZE].type          = type;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].ga            = ga;
    switchLogEntries++;
 }
