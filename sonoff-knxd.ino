@@ -604,11 +604,14 @@ void ledBlink(){
 
 void switchRelay(const uint8_t ch, const boolean on, const boolean overrideLock, const char *source, const uint8_t *ga){
    if (ch >= CHANNELS){
-      Serial.println("Ungültiger Kanal: " + String(ch + 1));
+      Serial.print("Ungültiger Kanal: ");
+      Serial.println(ch + 1);
    }
    else if (relayStatus[ch] != on){
       if (!overrideLock && lockActive[ch]){
-         Serial.println("Schaltkommando wird ignoriert, Kanal " + String(ch + 1) + " ist gesperrt!");
+         Serial.print("Schaltkommando wird ignoriert, Kanal ");
+         Serial.print(ch + 1);
+         Serial.println(" ist gesperrt!");
       }
       else{
          relayStatus[ch] = on;
@@ -619,12 +622,16 @@ void switchRelay(const uint8_t ch, const boolean on, const boolean overrideLock,
                autoOffTimerActive[ch] = true;
             }
             logSwitchEvent(ch, SWITCH_LOG_ON, source, ga);
-            Serial.println("Kanal " + String(ch + 1) + " wird eingeschaltet");
+            Serial.print("Kanal ");
+            Serial.print(ch + 1);
+            Serial.println(" wird eingeschaltet");
          }
          else{
             autoOffTimerActive[ch] = false;
             logSwitchEvent(ch, SWITCH_LOG_OFF, source, ga);
-            Serial.println("Kanal " + String(ch + 1) + " wird ausgeschaltet");
+            Serial.print("Kanal ");
+            Serial.print(ch + 1);
+            Serial.println(" wird ausgeschaltet");
          }
          
          if (RELAY_NORMALLY_OPEN[ch])
@@ -644,11 +651,14 @@ void switchRelay(const uint8_t ch, const boolean on, const boolean overrideLock,
 
 void lockRelay(const uint8_t ch, const boolean lock, const char *source, const uint8_t *ga){
    if (ch >= CHANNELS){
-      Serial.println("Ungültiger Kanal: " + String(ch + 1));
+      Serial.print("Ungültiger Kanal: ");
+      Serial.println(ch + 1);
    }
    else {      
       if (lock && !lockActive[ch]){
-         Serial.println("Kanal " + String(ch + 1) + " wird gesperrt!");
+         Serial.print("Kanal ");
+         Serial.print(ch + 1);
+         Serial.println(" wird gesperrt!");
          logSwitchEvent(ch, SWITCH_LOG_LOCK, source, ga);
          
          if (SWITCH_OFF_WHEN_LOCKED[ch])
@@ -661,7 +671,9 @@ void lockRelay(const uint8_t ch, const boolean lock, const char *source, const u
       else if (!lock && lockActive[ch]){
          lockActive[ch] = false;
          
-         Serial.println("Kanal " + String(ch + 1) + " wird entsperrt!");
+         Serial.print("Kanal ");
+         Serial.print(ch + 1);
+         Serial.println(" wird entsperrt!");
          logSwitchEvent(ch, SWITCH_LOG_UNLOCK, source, ga);
          
          if (SWITCH_OFF_WHEN_UNLOCKED[ch])
