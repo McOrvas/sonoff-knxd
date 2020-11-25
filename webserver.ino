@@ -471,6 +471,26 @@ void setupWebServer(){
       ESP.restart();
    });
    
+   /*webServer.on("/telegramtimeout", [](){
+      webServer.send(200, "text/html", getHtmlHeader(15, "/", "") + "<H2>Telegramm-Timeout!</H2>\n" + HTML_FOOTER);
+      lastTelegramReceivedMillis = currentMillis - (MISSING_TELEGRAM_TIMEOUT_MIN * 60000);
+   });
+   
+   webServer.on("/disconnectwlan", [](){
+      webServer.send(200, "text/html", getHtmlHeader(15, "/", "") + "<H2>Trenne WLAN!</H2>\n" + HTML_FOOTER);
+      WiFi.disconnect();
+   });
+   
+   webServer.on("/disconnectknxd", [](){
+      webServer.send(200, "text/html", getHtmlHeader(15, "/", "") + "<H2>Trenne KNXD!</H2>\n" + HTML_FOOTER);
+      client.stop();
+   });
+   
+   webServer.on("/wlantimeout", [](){
+      webServer.send(200, "text/html", getHtmlHeader(15, "/", "") + "<H2>WLAN-Timeout!</H2>\n" + HTML_FOOTER);
+      wifiConnected = 2;
+   });*/
+      
    httpUpdateServer.setup(&webServer);
    
    webServer.begin();

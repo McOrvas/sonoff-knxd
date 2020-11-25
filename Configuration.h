@@ -5,12 +5,15 @@
  */
 
 // SSID and password
-const char *SSID             = "ssid",
-           *PASSWORD         = "password",
+const char     *SSID                        = "ssid",
+               *PASSWORD                    = "password",
 
 // Host name and description
-           *HOST_NAME        = "Sonoff-S20-1",
-           *HOST_DESCRIPTION = "Description";
+               *HOST_NAME                   = "Sonoff-S20-1",
+               *HOST_DESCRIPTION            = "Description";
+
+const uint32_t WIFI_CONNECTION_TIMEOUT_S    = 30,
+               WIFI_CONNECTION_LOST_DELAY_S = 10;
 
 
 /* 

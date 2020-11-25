@@ -34,10 +34,12 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2020-11-17",
+const char     *SOFTWARE_VERSION                      = "2020-11-25",
 
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
                *LOG_WLAN_DISCONNECTED                 = "WLAN-Verbindung getrennt",
+               *LOG_WLAN_CONNECTION_TIMEOUT           = "Zeitüberschreitungen beim Aufbau der WLAN-Verbindung",
+               *LOG_WLAN_DHCP_TIMEOUT                 = "DHCP-Zeitüberschreitungen",
                *LOG_KNXD_CONNECTION_INITIATED         = "Initiale Verbindung zum knxd hergestellt",
                *LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT = "Zeitüberschreitungen bei der Verbindungsbestätigung durch den knxd",
                *LOG_KNXD_CONNECTION_CONFIRMED         = "Verbindung vom knxd bestätigt",
@@ -61,16 +63,17 @@ const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
 
 const boolean  GA_DATE_VALID = GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0,
                GA_TIME_VALID = GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0;
-
+               
 uint8_t        messageLength = 0,
                messageResponse[32],
-               timeWeekday = 0,
-               timeHours   = 0,
-               timeMinutes = 0,
-               timeSeconds = 0,
-               dateDay     = 0,
-               dateMonth   = 0,
-               dateYear    = 0;
+               wifiConnected = 0,
+               timeWeekday   = 0,
+               timeHours     = 0,
+               timeMinutes   = 0,
+               timeSeconds   = 0,
+               dateDay       = 0,
+               dateMonth     = 0,
+               dateYear      = 0;
 
 boolean        knxdConnectionInitiated          = false,
                knxdConnectionConfirmed          = false,
@@ -101,15 +104,21 @@ uint32_t       knxdConnectionInitiatedCount     = 0,
                buttonDebounceMillis[]           = {0, 0, 0, 0},
                autoOffTimerStartMillis[]        = {0, 0, 0, 0},
                knxdConnectionInitiatedMillis    = 0,
-               knxdConnectionFailedMillis       = 0,
+               knxdConnectionFailedMillis       = CONNECTION_LOST_DELAY_S * 1000,
                ledBlinkLastSwitch               = 0,
                lastTelegramReceivedMillis       = 0,
                lastTelegramHeaderReceivedMillis = 0,
                timeTelegramReceivedMillis       = 0,
-               dateTelegramReceivedMillis       = 0;
+               dateTelegramReceivedMillis       = 0,
+               wifiConnectionInitiatedMillis    = 0,
+               wifiDisconnectedMillis           = WIFI_CONNECTION_LOST_DELAY_S * 1000;
 
 // WLAN-Client
 WiFiClient              client;
+WiFiEventHandler        connectHandler,
+                        disconnectHandler,
+                        gotIpHandler,
+                        dhcpTimeoutHandler;
 
 // Webserver
 ESP8266WebServer        webServer(80);
@@ -230,50 +239,69 @@ void setup() {
    Serial.print(GA_DATE[1]);
    Serial.print("/");
    Serial.println(GA_DATE[2]);
-      
-   Serial.print("\nVerbinde mit WLAN '");
-   Serial.print(SSID);
-   Serial.print("'");
-   
-   /* Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,
-   *   would try to act as both a client and an access-point and could cause
-   *   network-issues with your other WiFi-devices on your WiFi-network. */
+
+   WiFi.disconnect();
    WiFi.mode(WIFI_STA);
    WiFi.hostname(HOST_NAME);
    WiFi.persistent(false);
-   WiFi.begin(SSID, PASSWORD);
-   
-   while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-   }
-   
-   Serial.print("\nVerbindung hergestellt mit ");
-   Serial.print(WiFi.BSSIDstr());
-   Serial.print(". IP-Adresse: ");
-   Serial.print(WiFi.localIP());
-   Serial.print(", WLAN-Kanal: ");
-   Serial.println(WiFi.channel());
+   WiFi.setAutoReconnect(false);
 
    setupWebServer();
-   
-   currentMillis = millis();   
-   logConnectionEvent(LOG_WLAN_CONNECTED);
-   connectToKnxd();
+      
+   connectHandler     = WiFi.onStationModeConnected(onWifiConnected);
+   disconnectHandler  = WiFi.onStationModeDisconnected(onWifiDisconnect);
+   gotIpHandler       = WiFi.onStationModeGotIP(onWifiGotIP);
+   dhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout(onWifiDhcpTimeout);   
+}
+
+
+void onWifiConnected(const WiFiEventStationModeConnected& event) {
+   wifiConnected = 2;    
+   Serial.print("WLAN-Verbindung hergestellt mit ");
+   Serial.print(WiFi.BSSIDstr());
+   Serial.print(" auf Kanal ");
+   Serial.println(WiFi.channel());
+}
+
+
+void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
+	wifiConnected = 3;
+    logConnectionEvent(LOG_WLAN_CONNECTED);
+    Serial.print("IP-Adresse: ");
+    Serial.println(WiFi.localIP());
+
+}
+
+
+void onWifiDhcpTimeout() {
+   wifiConnected = 0;
+   wifiDisconnectedMillis = currentMillis;
+   WiFi.disconnect();
+   logConnectionEvent(LOG_WLAN_DHCP_TIMEOUT);
+   Serial.println(LOG_WLAN_DHCP_TIMEOUT);
+}
+
+
+void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
+   wifiConnected = 0;
+   wifiDisconnectedMillis = currentMillis;  
+   wifiDisconnections++;
+   resetKnxdConnection();
+   logConnectionEvent(LOG_WLAN_DISCONNECTED); 
+   Serial.print(LOG_WLAN_DISCONNECTED);
+   Serial.print(": ");
+   Serial.println(event.reason);
 }
 
 
 void loop() {
    // Überlauf von millis()
-   if (currentMillis > millis()){
+   if (currentMillis > millis()) {
       millisOverflows++;
    }
    currentMillis = millis();
-   
-   // Webserver 
-   webServer.handleClient();
 
-   for (uint8_t ch=0; ch<CHANNELS; ch++){
+   for (uint8_t ch=0; ch<CHANNELS; ch++) {
       // Check hardware buttons
       checkButton(ch);
 
@@ -287,13 +315,40 @@ void loop() {
          switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, SWITCH_LOG_AUTO_OFF_TIMER, 0);
       }
    }
-
-   // KNX-Kommunikation
-   knxLoop();
    
-   // Falls eine Verbindung zum EIBD/KNXD aufgebaut ist, blinkt die LED sofern gewünscht.
-   if (LED_BLINKS_WHEN_CONNECTED)
-      ledBlink();
+   if (WiFi.status() != WL_CONNECTED || wifiConnected < 3) {              
+      // Wifi connection not yet established or delay has expired
+      if (wifiConnected == 0 && (currentMillis - wifiDisconnectedMillis) >= WIFI_CONNECTION_LOST_DELAY_S * 1000) {
+         wifiConnected = 1;
+         wifiConnectionInitiatedMillis = currentMillis;
+         WiFi.begin(SSID, PASSWORD);         
+         Serial.print("Verbinde mit WLAN '");
+         Serial.print(SSID);
+         Serial.println("'");   
+      }
+      
+      // The connection is already being established
+      else if (wifiConnected > 0 && (currentMillis - wifiConnectionInitiatedMillis) >= WIFI_CONNECTION_TIMEOUT_S * 1000) {
+         wifiConnected = 0;
+         wifiDisconnectedMillis = currentMillis;
+         WiFi.disconnect();
+         logConnectionEvent(LOG_WLAN_CONNECTION_TIMEOUT);
+         Serial.println(LOG_WLAN_CONNECTION_TIMEOUT);
+      }
+   }
+   
+   // WLAN connected and IP address received
+   else if (wifiConnected == 3) {
+      // KNX-Kommunikation
+      knxLoop();
+      
+      // Webserver 
+      webServer.handleClient();
+      
+      // Falls eine Verbindung zum EIBD/KNXD aufgebaut ist, blinkt die LED sofern gewünscht.
+      if (LED_BLINKS_WHEN_CONNECTED)
+         ledBlink();
+   }
 }
 
 
@@ -301,16 +356,9 @@ void knxLoop(){
    // Keine Verbindung zum knxd
    if (!knxdConnectionInitiated){
       // Pause zwischen zwei Verbindungsversuchen abgelaufen
-      if ((currentMillis - knxdConnectionFailedMillis) >= CONNECTION_LOST_DELAY_S * 1000)
+      if ((currentMillis - knxdConnectionFailedMillis) >= CONNECTION_LOST_DELAY_S * 1000){
          connectToKnxd();
-   }
-   
-   // Die WLAN-Verbindung wurde getrennt
-   else if (WiFi.status() != WL_CONNECTED){
-      Serial.println("Die WLAN-Verbindung wurde getrennt.");      
-      logConnectionEvent(LOG_WLAN_DISCONNECTED);
-      wifiDisconnections++;
-      resetKnxdConnection();
+      }
    }
    
    // Die Verbindung zum knxd wurde unterbrochen
@@ -335,7 +383,7 @@ void knxLoop(){
    else if (missingTelegramTimeoutEnabled && MISSING_TELEGRAM_TIMEOUT_MIN > 0 && (currentMillis - lastTelegramReceivedMillis) >= MISSING_TELEGRAM_TIMEOUT_MIN * 60000){
       Serial.print("Timeout: No telegram received during ");
       Serial.print(MISSING_TELEGRAM_TIMEOUT_MIN);
-      Serial.println();
+      Serial.println(" minutes");
       logConnectionEvent(LOG_MISSING_TELEGRAM_TIMEOUT);
       missingTelegramTimeouts++;
       resetKnxdConnection();
@@ -360,6 +408,11 @@ void knxLoop(){
             logConnectionEvent(LOG_KNXD_CONNECTION_CONFIRMED);
             knxdConnectionConfirmed = true;   
             knxdConnectionConfirmedCount++;
+            
+            // Auch wenn bisher kein echtes Telegramm vom Bus kam, die Variablen hier bereits entsprechend setzen,
+            // da ansonsten ein dauerhaft toter Bus nicht über den Timeout erkannt würde.
+            lastTelegramReceivedMillis = currentMillis;
+            missingTelegramTimeoutEnabled = true;
             
             // Die Status-GA senden, sobald die Verbindung steht. Dadurch wird sie beim ersten Start nach einem Spannungsausfall gesendet.
             for (uint8_t ch= 0; ch<CHANNELS; ch++)
@@ -485,7 +538,7 @@ void knxLoop(){
          Serial.println(" ms");
          logConnectionEvent(LOG_INCOMPLETE_TELEGRAM_TIMEOUT);
          incompleteTelegramTimeouts++;
-         resetKnxdConnection();         
+         resetKnxdConnection();
       }
    }
 }
@@ -519,13 +572,13 @@ boolean connectToKnxd(){
 
 
 void resetKnxdConnection(){
-      client.stop();
-      knxdConnectionInitiated          = false;
-      knxdConnectionConfirmed          = false;
-      missingTelegramTimeoutEnabled    = false;
-      incompleteTelegramTimeoutEnabled = false;
-      knxdConnectionFailedMillis       = currentMillis;
-      messageLength                    = 0;
+   client.stop();
+   knxdConnectionInitiated          = false;
+   knxdConnectionConfirmed          = false;
+   missingTelegramTimeoutEnabled    = false;
+   incompleteTelegramTimeoutEnabled = false;
+   knxdConnectionFailedMillis       = currentMillis;
+   messageLength                    = 0;
 }
 
 
