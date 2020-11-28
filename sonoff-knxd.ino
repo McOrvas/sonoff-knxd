@@ -34,9 +34,11 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2020-11-25",
+const char     *SOFTWARE_VERSION                      = "2020-11-28",
 
+               *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
+               *LOG_WLAN_DHCP_COMPLETED               = "IP-Adresse per DHCP erhalten",
                *LOG_WLAN_DISCONNECTED                 = "WLAN-Verbindung getrennt",
                *LOG_WLAN_CONNECTION_TIMEOUT           = "Zeitüberschreitungen beim Aufbau der WLAN-Verbindung",
                *LOG_WLAN_DHCP_TIMEOUT                 = "DHCP-Zeitüberschreitungen",
@@ -256,7 +258,8 @@ void setup() {
 
 
 void onWifiConnected(const WiFiEventStationModeConnected& event) {
-   wifiConnected = 2;    
+   wifiConnected = 2;
+   logConnectionEvent(LOG_WLAN_CONNECTED);
    Serial.print("WLAN-Verbindung hergestellt mit ");
    Serial.print(WiFi.BSSIDstr());
    Serial.print(" auf Kanal ");
@@ -266,7 +269,7 @@ void onWifiConnected(const WiFiEventStationModeConnected& event) {
 
 void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
 	wifiConnected = 3;
-    logConnectionEvent(LOG_WLAN_CONNECTED);
+    logConnectionEvent(LOG_WLAN_DHCP_COMPLETED);
     Serial.print("IP-Adresse: ");
     Serial.println(WiFi.localIP());
 
@@ -317,17 +320,18 @@ void loop() {
    }
    
    if (WiFi.status() != WL_CONNECTED || wifiConnected < 3) {              
-      // Wifi connection not yet established or delay has expired
+      // Wifi connection not yet initialized or delay has expired
       if (wifiConnected == 0 && (currentMillis - wifiDisconnectedMillis) >= WIFI_CONNECTION_LOST_DELAY_S * 1000) {
          wifiConnected = 1;
          wifiConnectionInitiatedMillis = currentMillis;
-         WiFi.begin(SSID, PASSWORD);         
+         WiFi.begin(SSID, PASSWORD);
+         logConnectionEvent(LOG_WLAN_CONNECTION_INITIATED);
          Serial.print("Verbinde mit WLAN '");
          Serial.print(SSID);
          Serial.println("'");   
       }
       
-      // The connection is already being established
+      // The connection is already initialized
       else if (wifiConnected > 0 && (currentMillis - wifiConnectionInitiatedMillis) >= WIFI_CONNECTION_TIMEOUT_S * 1000) {
          wifiConnected = 0;
          wifiDisconnectedMillis = currentMillis;
