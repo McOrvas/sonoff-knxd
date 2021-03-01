@@ -34,7 +34,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2020-11-28",
+const char     *SOFTWARE_VERSION                      = "2021-03-01",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -102,6 +102,7 @@ uint32_t       knxdConnectionInitiatedCount     = 0,
                
 // Variablen zur Zeitmessung
                currentMillis                    = 0,
+               currentMillisTemp                = 0,
                millisOverflows                  = 0,
                buttonDebounceMillis[]           = {0, 0, 0, 0},
                autoOffTimerStartMillis[]        = {0, 0, 0, 0},
@@ -298,11 +299,13 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
 
 
 void loop() {
+   currentMillisTemp = millis();
+   
    // Überlauf von millis()
-   if (currentMillis > millis()) {
+   if (currentMillis > currentMillisTemp) {
       millisOverflows++;
    }
-   currentMillis = millis();
+   currentMillis = currentMillisTemp;
 
    for (uint8_t ch=0; ch<CHANNELS; ch++) {
       // Check hardware buttons
