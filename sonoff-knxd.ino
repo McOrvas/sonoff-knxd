@@ -56,7 +56,8 @@ const char     *SOFTWARE_VERSION                      = "2021-03-21",
                *SWITCH_LOG_BUTTON                     = "Taster",
                *SWITCH_LOG_ON_BY_LOCK                 = "Sperrautomatik",
                *SWITCH_LOG_OFF_BY_UNLOCK              = "Entsperrautomatik",
-               *SWITCH_LOG_AUTO_OFF_TIMER             = "Ausschaltautomatik",
+               *SWITCH_LOG_AUTO_OFF_TIMER             = "Zeitschalter",
+               *SWITCH_LOG_AUTO_UNLOCK_TIMER          = "Zeitschalter",
                *SWITCH_LOG_WEBSERVER                  = "Webserver";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
@@ -83,6 +84,7 @@ boolean        knxdConnectionInitiated          = false,
                buttonLastState[]                = {true, true, true, true},
                buttonDebouncedState[]           = {true, true, true, true},
                autoOffTimerActive[]             = {false, false, false, false},
+               autoUnlockTimerActive[]          = {false, false, false, false},
                relayStatus[]                    = {false, false, false, false},
                ledBlinkStatus                   = false,
                timeValid                        = false,
@@ -106,6 +108,7 @@ uint32_t       knxdConnectionInitiatedCount     = 0,
                millisOverflows                  = 0,
                buttonDebounceMillis[]           = {0, 0, 0, 0},
                autoOffTimerStartMillis[]        = {0, 0, 0, 0},
+               autoUnlockTimerStartMillis[]     = {0, 0, 0, 0},
                knxdConnectionInitiatedMillis    = 0,
                knxdConnectionFailedMillis       = CONNECTION_LOST_DELAY_S * 1000,
                ledBlinkLastSwitch               = 0,
@@ -319,6 +322,15 @@ void loop() {
          // Set to false even if the channel cannot be switched off due to an active lock.
          autoOffTimerActive[ch] = false;
          switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, SWITCH_LOG_AUTO_OFF_TIMER, 0);
+      }
+
+      // Check if a channel has to be unlocked by a timer
+      if (lockActive[ch] && autoUnlockTimerActive[ch] && (currentMillis - autoUnlockTimerStartMillis[ch]) >= (AUTO_UNLOCK_TIMER_S[ch] * 1000)){
+         Serial.print("Auto unlock timer for channel ");
+         Serial.print(ch + 1);
+         Serial.println(" has expired!");
+         autoUnlockTimerActive[ch] = false;
+         lockRelay(ch, false, SWITCH_LOG_AUTO_UNLOCK_TIMER, 0);
       }
    }
    
@@ -721,6 +733,11 @@ void lockRelay(const uint8_t ch, const boolean lock, const char *source, const u
          Serial.println(" wird gesperrt!");
          logSwitchEvent(ch, SWITCH_LOG_LOCK, source, ga);
          
+         if (AUTO_UNLOCK_TIMER_S[ch] > 0){
+            autoUnlockTimerStartMillis[ch] = currentMillis;
+            autoUnlockTimerActive[ch] = true;
+         }
+         
          if (SWITCH_OFF_WHEN_LOCKED[ch])
             switchRelay(ch, false, false, SWITCH_LOG_ON_BY_LOCK, 0);
          else if (SWITCH_ON_WHEN_LOCKED[ch])
@@ -730,6 +747,7 @@ void lockRelay(const uint8_t ch, const boolean lock, const char *source, const u
       }                  
       else if (!lock && lockActive[ch]){
          lockActive[ch] = false;
+         autoUnlockTimerActive[ch] = false;
          
          Serial.print("Kanal ");
          Serial.print(ch + 1);

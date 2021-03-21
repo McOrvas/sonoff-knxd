@@ -113,6 +113,14 @@ const uint32_t AUTO_OFF_TIMER_S[] = {
 // Determine if the auto off timer should override an active lock or not.
 const boolean AUTO_OFF_TIMER_OVERRIDES_LOCK = true;
 
+// Time after which the channel is automatically unlocked again. A value of 0 deactivates the function.
+const uint32_t AUTO_UNLOCK_TIMER_S[] = {
+                                     0, // Channel 1
+                                     0, // Channel 2
+                                     0, // Channel 3
+                                     0  // Channel 4
+                                    };
+
 
 /* 
  * ***************************
