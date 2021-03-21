@@ -35,7 +35,14 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl, String bodyId){
          "</head>\n"
          "<body id=\"" + bodyId + "\">\n"
          "<H1><a href=\"/\" style=\"color: inherit\">" + HOST_NAME + " (" + HOST_DESCRIPTION + ")</a></H1>\n"
-         + getKnxdStatusString() + "\n"
+         
+         "<a href=\"maintenance\" title=\"Ger&auml;tewartung\" "
+         + String(knxdConnectionConfirmed
+            ? "class=\"green\">Das Modul ist mit dem knxd verbunden!"
+            : "class=\"red\">Das Modul ist nicht mit dem knxd verbunden!"
+           ) +
+         "</a>\n"
+         
          "<p>\n"
          "<a class=\"box\" id=\"mainA\"          href=\"..\"            title=\"Schaltstatus\">Schaltstatus</a>\n"
          "<a class=\"box\" id=\"maintenanceA\"   href=\"maintenance\"   title=\"Ger&auml;tewartung\">Ger&auml;tewartung</a>\n"
@@ -45,19 +52,9 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl, String bodyId){
 }
 
 
-String getKnxdStatusString(){
-      return
-         "<a href=\"maintenance\" title=\"Ger&auml;tewartung\" "
-         + String(knxdConnectionConfirmed
-            ? "class=\"green\">Das Modul ist mit dem knxd verbunden!"
-            : "class=\"red\">Das Modul ist nicht mit dem knxd verbunden!"
-           ) +
-         "</a>";
-}
-
-
-String getWebServerMainPage() {
-   return
+void setupWebServer(){
+   webServer.on("/", [](){
+      webServer.send(200, "text/html",
          getHtmlHeader(15, "/", "main") +
          
          "<H2>Schaltstatus</H2>\n"
@@ -86,41 +83,41 @@ String getWebServerMainPage() {
          "</tr>\n"
          "</table>\n"
          
-         + HTML_FOOTER;
-}
+         + HTML_FOOTER
+      );
+   });
+   
+   webServer.on("/maintenance", [](){
+      String gaSwitchString[CHANNELS],
+            gaLockString[CHANNELS],
+            gaStatusString[CHANNELS],
+            gaTimeString,
+            gaDateString;
 
+      for (uint8_t ch=0; ch<CHANNELS; ch++){
+         for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
+            if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0)
+               gaSwitchString[ch] += String(GA_SWITCH[ch][i][0]) + "/" + String(GA_SWITCH[ch][i][1]) + "/" + String(GA_SWITCH[ch][i][2]) + "<br />";
+         }
 
-String getWebServerMaintenancePage() {
-   String gaSwitchString[CHANNELS],
-          gaLockString[CHANNELS],
-          gaStatusString[CHANNELS],
-          gaTimeString,
-          gaDateString;
+         for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
+            if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0)
+               gaLockString[ch] += String(GA_LOCK[ch][i][0]) + "/" + String(GA_LOCK[ch][i][1]) + "/" + String(GA_LOCK[ch][i][2]) + "<br />";
+         }
 
-   for (uint8_t ch=0; ch<CHANNELS; ch++){
-      for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
-         if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0)
-            gaSwitchString[ch] += String(GA_SWITCH[ch][i][0]) + "/" + String(GA_SWITCH[ch][i][1]) + "/" + String(GA_SWITCH[ch][i][2]) + "<br />";
+         if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0)
+            gaStatusString[ch] += String(GA_STATUS[ch][0]) + "/" + String(GA_STATUS[ch][1]) + "/" + String(GA_STATUS[ch][2]);
+         
+         gaTimeString = "<tr><td>Zeit</td>"
+            "<td>" + String(GA_TIME[0]) + "/" + String(GA_TIME[1]) + "/" + String(GA_TIME[2]) + "</td>"
+            "</tr>\n";
+         
+         gaDateString = "<tr><td>Datum</td>"
+            "<td>" + String(GA_DATE[0]) + "/" + String(GA_DATE[1]) + "/" + String(GA_DATE[2]) + "</td>"
+            "</tr>\n";
       }
-
-      for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
-         if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0)
-            gaLockString[ch] += String(GA_LOCK[ch][i][0]) + "/" + String(GA_LOCK[ch][i][1]) + "/" + String(GA_LOCK[ch][i][2]) + "<br />";
-      }
-
-      if (GA_STATUS[ch][0] + GA_STATUS[ch][1] + GA_STATUS[ch][2] > 0)
-         gaStatusString[ch] += String(GA_STATUS[ch][0]) + "/" + String(GA_STATUS[ch][1]) + "/" + String(GA_STATUS[ch][2]);
       
-      gaTimeString = "<tr><td>Zeit</td>"
-         "<td>" + String(GA_TIME[0]) + "/" + String(GA_TIME[1]) + "/" + String(GA_TIME[2]) + "</td>"
-         "</tr>\n";
-      
-      gaDateString = "<tr><td>Datum</td>"
-         "<td>" + String(GA_DATE[0]) + "/" + String(GA_DATE[1]) + "/" + String(GA_DATE[2]) + "</td>"
-         "</tr>\n";
-   }
-
-   return
+      webServer.send(200, "text/html",
          getHtmlHeader(60, "/maintenance", "maintenance") +
          
          "<H2>Ger&auml;tewartung</H2>\n"
@@ -221,99 +218,88 @@ String getWebServerMaintenancePage() {
             : "") +
          "</table>\n"
 
-         + HTML_FOOTER;
-}
-
-
-String getWebServerSwitchLogPage() {
-   // Log-Tabelle
-   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Kanal</th><th>Ereignis</th><th>Quelle</th></tr>\n";
-   uint32_t start   = switchLogEntries <= LOG_SIZE ? 0                :  switchLogEntries % LOG_SIZE,
-            end     = switchLogEntries <= LOG_SIZE ? switchLogEntries : (switchLogEntries % LOG_SIZE) + LOG_SIZE;
-   
-   for (uint32_t i=start; i<end; i++){
-      String color;
-      if (switchLogRingbuffer[i % LOG_SIZE].type == SWITCH_LOG_OFF)
-         color = "red";
-      else if (switchLogRingbuffer[i % LOG_SIZE].type == SWITCH_LOG_ON)
-         color = "green";
-      else
-         color = "orange";
-      
-      const char* message = switchLogRingbuffer[i % LOG_SIZE].message;
-      const uint8_t *ga = switchLogRingbuffer[i % LOG_SIZE].ga;
-      String text = "-";
-      if (message != 0)
-         text = message;
-      else if (ga != 0)
-         text = String(*ga) + "/" + String(*(ga+1)) + "/" + String(*(ga+2));
-      
-      logString += "<tr>"
-      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
-      "<td>" + String(getUptimeString(switchLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
-      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(switchLogRingbuffer[i % LOG_SIZE].dateYear, switchLogRingbuffer[i % LOG_SIZE].dateMonth, switchLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
-      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(switchLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
-      "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].channel + 1) + "</td>"
-      "<td class=\"" + color + "\">" + switchLogRingbuffer[i % LOG_SIZE].type + "</td>"
-      "<td>" + text + "</td></tr>\n";
-   }
-   
-   logString +="</table>\n";
-   
-   return
-         getHtmlHeader(60, "/switchLog", "switchLog") +
-         "<H2>Schaltprotokoll</H2>\n"
-         + logString
-         + HTML_FOOTER;
-}
-
-
-String getWebServerConnectionLogPage() {
-   // Log-Tabelle
-   String logString = "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>BSSID</th><th>Kanal</th><th>Ereignis</th></tr>\n";
-   uint32_t start   = connectionLogEntries <= LOG_SIZE ? 0                    :  connectionLogEntries % LOG_SIZE,
-            end     = connectionLogEntries <= LOG_SIZE ? connectionLogEntries : (connectionLogEntries % LOG_SIZE) + LOG_SIZE;   
-   char     bssidString[18];
-      
-   for (uint32_t i=start; i<end; i++){
-      const uint8_t *bssid = connectionLogRingbuffer[i % LOG_SIZE].wlanBssid;
-      snprintf(bssidString, 18, "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
-      
-      logString += "<tr>"
-      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
-      "<td>" + String(getUptimeString(connectionLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
-      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(connectionLogRingbuffer[i % LOG_SIZE].dateYear, connectionLogRingbuffer[i % LOG_SIZE].dateMonth, connectionLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
-      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(connectionLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
-      "<td>" + bssidString + "</td>"
-      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].wlanChannel) + "</td>"
-      "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n";
-   }
-   
-   logString +="</table>\n";
-   
-   return
-         getHtmlHeader(60, "/connectionLog", "connectionLog") +
-         "<H2>Verbindungsprotokoll</H2>\n"
-         + logString
-         + HTML_FOOTER;
-}
-
-
-void setupWebServer(){
-   webServer.on("/", [](){
-      webServer.send(200, "text/html", getWebServerMainPage());
-   });
-   
-   webServer.on("/maintenance", [](){
-      webServer.send(200, "text/html", getWebServerMaintenancePage());
+         + HTML_FOOTER
+      );
    });
    
    webServer.on("/switchLog", [](){
-      webServer.send(200, "text/html", getWebServerSwitchLogPage());
-   });
+      webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
+      webServer.send(200, "text/html", getHtmlHeader(60, "/switchLog", "switchLog"));   
+      webServer.sendContent(
+         "<H2>Schaltprotokoll</H2>\n"
+         "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Kanal</th><th>Ereignis</th><th>Quelle</th></tr>\n"
+      );
+      
+      // Log-Tabelle
+      uint32_t start   = switchLogEntries <= LOG_SIZE ? 0                :  switchLogEntries % LOG_SIZE,
+               end     = switchLogEntries <= LOG_SIZE ? switchLogEntries : (switchLogEntries % LOG_SIZE) + LOG_SIZE;
+      
+      for (uint32_t i=start; i<end; i++){
+         String color;
+         if (switchLogRingbuffer[i % LOG_SIZE].type == SWITCH_LOG_OFF)
+            color = "red";
+         else if (switchLogRingbuffer[i % LOG_SIZE].type == SWITCH_LOG_ON)
+            color = "green";
+         else
+            color = "orange";
+         
+         const char* message = switchLogRingbuffer[i % LOG_SIZE].message;
+         const uint8_t *ga = switchLogRingbuffer[i % LOG_SIZE].ga;
+         String text = "-";
+         if (message != 0)
+            text = message;
+         else if (ga != 0)
+            text = String(*ga) + "/" + String(*(ga+1)) + "/" + String(*(ga+2));
+         
+         webServer.sendContent(
+            "<tr>"
+            "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
+            "<td>" + String(getUptimeString(switchLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
+            "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(switchLogRingbuffer[i % LOG_SIZE].dateYear, switchLogRingbuffer[i % LOG_SIZE].dateMonth, switchLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
+            "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(switchLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+            "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].channel + 1) + "</td>"
+            "<td class=\"" + color + "\">" + switchLogRingbuffer[i % LOG_SIZE].type + "</td>"
+            "<td>" + text + "</td></tr>\n"
+         );
+      }
+      
+      webServer.sendContent("</table>\n");
+      webServer.sendContent(HTML_FOOTER);
+      webServer.sendContent("");
+    });
    
    webServer.on("/connectionLog", [](){
-      webServer.send(200, "text/html", getWebServerConnectionLogPage());
+      webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
+      webServer.send(200, "text/html", getHtmlHeader(60, "/connectionLog", "connectionLog"));
+      webServer.sendContent(
+         "<H2>Verbindungsprotokoll</H2>\n"
+         "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>BSSID</th><th>Kanal</th><th>Ereignis</th></tr>\n"
+      );
+      
+      // Log-Tabelle
+      uint32_t start   = connectionLogEntries <= LOG_SIZE ? 0                    :  connectionLogEntries % LOG_SIZE,
+               end     = connectionLogEntries <= LOG_SIZE ? connectionLogEntries : (connectionLogEntries % LOG_SIZE) + LOG_SIZE;   
+      char     bssidString[18];
+         
+      for (uint32_t i=start; i<end; i++){
+         const uint8_t *bssid = connectionLogRingbuffer[i % LOG_SIZE].wlanBssid;
+         snprintf(bssidString, 18, "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+         
+         webServer.sendContent(
+            "<tr>"
+            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].entry + 1) + "</td>"
+            "<td>" + String(getUptimeString(connectionLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
+            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(connectionLogRingbuffer[i % LOG_SIZE].dateYear, connectionLogRingbuffer[i % LOG_SIZE].dateMonth, connectionLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
+            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(connectionLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+            "<td>" + bssidString + "</td>"
+            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].wlanChannel) + "</td>"
+            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n"
+         );
+      }
+      
+      webServer.sendContent("</table>\n");
+      webServer.sendContent(HTML_FOOTER);
+      webServer.sendContent("");
    });
    
    webServer.on("/ch1/on", [](){

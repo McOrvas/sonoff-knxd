@@ -34,7 +34,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2021-03-01",
+const char     *SOFTWARE_VERSION                      = "2021-03-21",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -128,7 +128,7 @@ ESP8266WebServer        webServer(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
 
 // Variablen zur Ereignisspeicherung
-const uint32_t  LOG_SIZE = 25;
+const uint32_t  LOG_SIZE = 100;
 uint32_t        connectionLogEntries = 0;
 uint32_t        switchLogEntries = 0;
 
