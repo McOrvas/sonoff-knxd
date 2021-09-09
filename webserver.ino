@@ -292,8 +292,9 @@ void setupWebServer(){
             "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(connectionLogRingbuffer[i % LOG_SIZE].dateYear, connectionLogRingbuffer[i % LOG_SIZE].dateMonth, connectionLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
             "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(connectionLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
             "<td>" + bssidString + "</td>"
-            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].wlanChannel) + "</td>"
-            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n"
+            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].wlanChannel) + "</td>" +
+            (connectionLogRingbuffer[i % LOG_SIZE].message == LOG_KNXD_CONNECTION_CONFIRMED ? "<td class=\"green\">" : "<td>")
+            + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n"
          );
       }
       
