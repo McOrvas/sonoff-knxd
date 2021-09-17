@@ -92,7 +92,12 @@ void setupWebServer(){
             gaLockString[CHANNELS],
             gaStatusString[CHANNELS],
             gaTimeString,
-            gaDateString;
+            gaDateString,
+            bootDateTime = "";
+      
+      if (dateValid && timeValid){         
+         bootDateTime = String(" (seit ") + getDateString(year(bootTime), month(bootTime), day(bootTime)) + " " + getTimeString(hour(bootTime), minute(bootTime), second(bootTime)) + ")";
+      }
 
       for (uint8_t ch=0; ch<CHANNELS; ch++){
          for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
@@ -126,7 +131,7 @@ void setupWebServer(){
          "<tr><td><a href=\"update\" title=\"Firmware aktualisieren\">Firmware</a></td>"
          "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
          "<tr><td><a href=\"reboot\" title=\"Neustart\">Laufzeit</a></td></td>"
-         "<td>" + getUptimeString(getUptimeSeconds()) + "</td></tr>\n"
+         "<td>" + getUptimeString(getUptimeSeconds()) + bootDateTime + "</td></tr>\n"
          "<tr><td>Freier Speicher</td>"
          "<td>" + ESP.getFreeHeap() + " byte</td></tr>\n"
          "</table>\n"
@@ -210,11 +215,11 @@ void setupWebServer(){
 
          + String(GA_DATE_VALID
             ? "<tr><td>Aktuelles Datum" + String(dateValid ? " (empfangen vor " + String(getUptimeString((currentMillis - dateTelegramReceivedMillis) / 1000)) + ")": "") + "</td>"
-              "<td>" + String(dateValid ? getDateString(dateYear, dateMonth, dateDay) : "-") + "</td></tr>\n"
+              "<td>" + String(dateValid ? getDateString(year(), month(), day()) : "-") + "</td></tr>\n"
             : "")
          + String(GA_TIME_VALID
             ? "<tr><td>Aktuelle Uhrzeit" + String(timeValid ? " (empfangen vor " + String(getUptimeString((currentMillis - timeTelegramReceivedMillis) / 1000)) + ")": "") + "</td>"
-              "<td>" + String(timeValid ? getTimeString(getUpdatedTimeSeconds()) : "-") + "</td></tr>\n"
+              "<td>" + String(timeValid ? getTimeString(hour(), minute(), second()) : "-") + "</td></tr>\n"
             : "") +
          "</table>\n"
 
@@ -235,6 +240,12 @@ void setupWebServer(){
                end     = switchLogEntries <= LOG_SIZE ? switchLogEntries : (switchLogEntries % LOG_SIZE) + LOG_SIZE;
       
       for (uint32_t i=start; i<end; i++){
+         time_t timestamp = 0;
+         if (switchLogRingbuffer[i % LOG_SIZE].timestampValid)
+            timestamp = switchLogRingbuffer[i % LOG_SIZE].timestamp;
+         else if (dateValid && timeValid)
+            timestamp = bootTime + switchLogRingbuffer[i % LOG_SIZE].uptimeSeconds;
+         
          String color;
          if (switchLogRingbuffer[i % LOG_SIZE].type == SWITCH_LOG_OFF)
             color = "red";
@@ -255,11 +266,12 @@ void setupWebServer(){
             "<tr>"
             "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
             "<td>" + String(getUptimeString(switchLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
-            "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(switchLogRingbuffer[i % LOG_SIZE].dateYear, switchLogRingbuffer[i % LOG_SIZE].dateMonth, switchLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
-            "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(switchLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getDateString(year(timestamp), month(timestamp), day(timestamp)) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getTimeString(hour(timestamp), minute(timestamp), second(timestamp)) : "-")    + "</td>"
             "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].channel + 1) + "</td>"
             "<td class=\"" + color + "\">" + switchLogRingbuffer[i % LOG_SIZE].type + "</td>"
-            "<td>" + text + "</td></tr>\n"
+            "<td>" + text + "</td>"
+            "</tr>\n"
          );
       }
       
@@ -285,16 +297,23 @@ void setupWebServer(){
          const uint8_t *bssid = connectionLogRingbuffer[i % LOG_SIZE].wlanBssid;
          snprintf(bssidString, 18, "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
          
+         time_t timestamp = 0;
+         if (connectionLogRingbuffer[i % LOG_SIZE].timestampValid)
+            timestamp = connectionLogRingbuffer[i % LOG_SIZE].timestamp;
+         else if (dateValid && timeValid)
+            timestamp = bootTime + connectionLogRingbuffer[i % LOG_SIZE].uptimeSeconds;
+         
          webServer.sendContent(
             "<tr>"
             "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].entry + 1) + "</td>"
             "<td>" + String(getUptimeString(connectionLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
-            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].dateValid ? getDateString(connectionLogRingbuffer[i % LOG_SIZE].dateYear, connectionLogRingbuffer[i % LOG_SIZE].dateMonth, connectionLogRingbuffer[i % LOG_SIZE].dateDay) : "-")    + "</td>"
-            "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].timeValid ? getTimeString(connectionLogRingbuffer[i % LOG_SIZE].timeSeconds) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getDateString(year(timestamp), month(timestamp), day(timestamp)) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getTimeString(hour(timestamp), minute(timestamp), second(timestamp)) : "-")    + "</td>"
             "<td>" + bssidString + "</td>"
             "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].wlanChannel) + "</td>" +
             (connectionLogRingbuffer[i % LOG_SIZE].message == LOG_KNXD_CONNECTION_CONFIRMED ? "<td class=\"green\">" : "<td>")
-            + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td></tr>\n"
+            + String(connectionLogRingbuffer[i % LOG_SIZE].message) + "</td>"
+            "</tr>\n"
          );
       }
       

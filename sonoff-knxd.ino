@@ -13,6 +13,7 @@
  * Flash Size:         1M (64K SPIFFS) [Notwendig für Updates über die Weboberfläche]
  */
 
+#include <TimeLib.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
@@ -34,7 +35,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2021-03-21",
+const char     *SOFTWARE_VERSION                      = "2021-09-17",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -75,8 +76,9 @@ uint8_t        messageLength = 0,
                timeMinutes   = 0,
                timeSeconds   = 0,
                dateDay       = 0,
-               dateMonth     = 0,
-               dateYear      = 0;
+               dateMonth     = 0;
+uint16_t       dateYear      = 0;
+time_t         bootTime      = 0;
 
 boolean        knxdConnectionInitiated          = false,
                knxdConnectionConfirmed          = false,
@@ -137,16 +139,12 @@ uint32_t        switchLogEntries = 0;
 
 struct logConnectionEvent {
    const char  *message;
-   boolean     timeValid,
-               dateValid;
    uint32_t    entry,
-               uptimeSeconds,
-               timeSeconds;
+               uptimeSeconds;
+   time_t      timestamp;
+   boolean     timestampValid;
    int32_t     wlanChannel;
-   uint8_t     dateDay,
-               dateMonth,
-               dateYear,
-               wlanBssid[6];
+   uint8_t     wlanBssid[6];
 } connectionLogRingbuffer[LOG_SIZE];
 
 struct logSwitchEvent {
@@ -154,14 +152,10 @@ struct logSwitchEvent {
    const char    *type,
                  *message;
    uint8_t       channel;   
-   boolean       timeValid,
-                 dateValid;
    uint32_t      entry,
-                 uptimeSeconds,
-                 timeSeconds;
-   uint8_t       dateDay,
-                 dateMonth,
-                 dateYear;
+                 uptimeSeconds;
+   time_t        timestamp;
+   boolean       timestampValid;
 } switchLogRingbuffer[LOG_SIZE];
 
 
@@ -523,11 +517,21 @@ void knxLoop(){
                   dateDay   = messageResponse[8] & 0x1F;
                   dateMonth = messageResponse[9] & 0x0F;
                   dateYear  = (messageResponse[10] & 0x7F);
-                  dateValid = true;
+                  dateYear  = dateYear >= 90 ? 1900 + dateYear : 2000 + dateYear;                  
                   dateTelegramReceivedMillis = currentMillis;
                   
                   Serial.print("Date telegram received: ");
                   Serial.println(getDateString(dateYear, dateMonth, dateDay));
+                  
+                  Serial.printf("Old date and time: %04d-%02d-%02d %02d:%02d:%02d (%1d)\n", year(), month(), day(), hour(), minute(), second(), timeStatus());
+                  setTime(hour(), minute(), second(), dateDay, dateMonth, dateYear);                  
+                  Serial.printf("New date and time: %04d-%02d-%02d %02d:%02d:%02d (%1d)\n", year(), month(), day(), hour(), minute(), second(), timeStatus());
+                  
+                  if (!dateValid || !timeValid){
+                     bootTime = now() - getUptimeSeconds();
+                  }
+                  
+                  dateValid = true;
                }
                
                // Time telegram
@@ -536,12 +540,21 @@ void knxLoop(){
                   timeWeekday = messageResponse[8] >> 5;
                   timeHours   = messageResponse[8] & 0x1F;
                   timeMinutes = messageResponse[9] & 0x3F;
-                  timeSeconds = messageResponse[10] & 0x3F;  
-                  timeValid   = true;
+                  timeSeconds = messageResponse[10] & 0x3F;                    
                   timeTelegramReceivedMillis = currentMillis;
                   
                   Serial.print("Time telegram received: ");
-                  Serial.println(getTimeString(timeWeekday, timeHours, timeMinutes, timeSeconds));
+                  Serial.println(getTimeString(timeHours, timeMinutes, timeSeconds));
+                  
+                  Serial.printf("Old date and time: %04d-%02d-%02d %02d:%02d:%02d (%1d)\n", year(), month(), day(), hour(), minute(), second(), timeStatus());
+                  setTime(timeHours, timeMinutes, timeSeconds, day(), month(), year());
+                  Serial.printf("New date and time: %04d-%02d-%02d %02d:%02d:%02d (%1d)\n", year(), month(), day(), hour(), minute(), second(), timeStatus());
+                  
+                  if (!dateValid || !timeValid){
+                     bootTime = now() - getUptimeSeconds();
+                  }
+                  
+                  timeValid   = true;
                }
             }
          }
@@ -800,79 +813,41 @@ char* getUptimeString(uint32_t totalSeconds){
 }
 
 
-char* getTimeString(uint8_t weekday, uint8_t hours, uint8_t minutes, uint8_t seconds){
-   static char timeString[22];
+char* getTimeString(uint8_t hours, uint8_t minutes, uint8_t seconds){
+   static char timeString[9];   
+   snprintf(timeString, 9, "%02d:%02d:%02d", hours, minutes, seconds);
    
-        if (weekday == 1) snprintf(timeString, 22, "%02d:%02d:%02d (Montag)",     hours, minutes, seconds);
-   else if (weekday == 2) snprintf(timeString, 22, "%02d:%02d:%02d (Dienstag)",   hours, minutes, seconds);
-   else if (weekday == 3) snprintf(timeString, 22, "%02d:%02d:%02d (Mittwoch)",   hours, minutes, seconds);
-   else if (weekday == 4) snprintf(timeString, 22, "%02d:%02d:%02d (Donnerstag)", hours, minutes, seconds);
-   else if (weekday == 5) snprintf(timeString, 22, "%02d:%02d:%02d (Freitag)",    hours, minutes, seconds);
-   else if (weekday == 6) snprintf(timeString, 22, "%02d:%02d:%02d (Samstag)",    hours, minutes, seconds);
-   else if (weekday == 7) snprintf(timeString, 22, "%02d:%02d:%02d (Sonntag)",    hours, minutes, seconds);
-   else                   snprintf(timeString,  9, "%02d:%02d:%02d",              hours, minutes, seconds);
-      
    return timeString;   
 }
 
 
-char* getTimeString(uint32_t totalSeconds){
-   uint32_t seconds       = totalSeconds % 60,
-            minutes       = (totalSeconds / 60) % 60,
-            hours         = (totalSeconds / (60 * 60)) % 24,
-            days          = totalSeconds / (60 * 60 * 24),
-            weekday       = days == 0 ? 0 : ((days - 1) % 7) + 1;
-   
-   return getTimeString(weekday, hours, minutes, seconds);
-}
-
-
-uint32_t getUpdatedTimeSeconds(){
-   uint32_t seconds = timeWeekday * 86400 + ((timeHours * 3600) + (timeMinutes * 60) + timeSeconds + ((currentMillis - timeTelegramReceivedMillis) / 1000));
-   
-   // Invalid weekday
-   if (timeWeekday == 0)
-      seconds = seconds % 86400;
-   
-   return seconds;
-}
-
-
-char* getDateString(uint8_t year, uint8_t month, uint8_t day){   
+char* getDateString(uint16_t year, uint8_t month, uint8_t day){   
    static char dateString[11];
-   snprintf(dateString, 11, "%04d-%02d-%02d", year >= 90 ? 1900 + year : 2000 + year, month, day);
+   snprintf(dateString, 11, "%04d-%02d-%02d", year, month, day);
    return dateString;
 }
 
 
 void logConnectionEvent(const char* message){
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].entry         = connectionLogEntries;
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timeValid     = timeValid;
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateValid     = dateValid;   
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateDay       = dateDay;
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateMonth     = dateMonth;
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].dateYear      = dateYear;
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].uptimeSeconds = getUptimeSeconds();
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].wlanChannel   = WiFi.channel();
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].message       = message;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].entry          = connectionLogEntries;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].uptimeSeconds  = getUptimeSeconds();
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timestamp      = now();
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timestampValid = dateValid && timeValid;
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].wlanChannel    = WiFi.channel();
+   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].message        = message;
    memcpy(connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].wlanBssid, WiFi.BSSID(), 6);
    connectionLogEntries++;
 }
 
 
 void logSwitchEvent(const uint8_t ch, const char* type, const char* message, const uint8_t *ga){
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].entry         = switchLogEntries;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timeValid     = timeValid;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timeSeconds   = getUpdatedTimeSeconds();
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateValid     = dateValid;   
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateDay       = dateDay;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateMonth     = dateMonth;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].dateYear      = dateYear;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].uptimeSeconds = getUptimeSeconds();
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].message       = message;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].channel       = ch;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].type          = type;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].ga            = ga;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].entry          = switchLogEntries;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].uptimeSeconds  = getUptimeSeconds();
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timestamp      = now();
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timestampValid = dateValid && timeValid;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].message        = message;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].channel        = ch;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].type           = type;
+   switchLogRingbuffer[switchLogEntries % LOG_SIZE].ga             = ga;
    switchLogEntries++;
 }
