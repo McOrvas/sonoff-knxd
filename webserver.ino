@@ -96,7 +96,7 @@ void setupWebServer(){
             bootDateTime = "";
       
       if (dateValid && timeValid){         
-         bootDateTime = String(" (seit ") + getDateString(year(bootTime), month(bootTime), day(bootTime)) + " " + getTimeString(hour(bootTime), minute(bootTime), second(bootTime)) + ")";
+         bootDateTime = String(" (seit ") + getDateString(bootTime) + " " + getTimeString(bootTime) + ")";
       }
 
       for (uint8_t ch=0; ch<CHANNELS; ch++){
@@ -215,11 +215,11 @@ void setupWebServer(){
 
          + String(GA_DATE_VALID
             ? "<tr><td>Aktuelles Datum" + String(dateValid ? " (empfangen vor " + String(getUptimeString((currentMillis - dateTelegramReceivedMillis) / 1000)) + ")": "") + "</td>"
-              "<td>" + String(dateValid ? getDateString(year(), month(), day()) : "-") + "</td></tr>\n"
+              "<td>" + String(dateValid ? getDateString(now()) : "-") + "</td></tr>\n"
             : "")
          + String(GA_TIME_VALID
             ? "<tr><td>Aktuelle Uhrzeit" + String(timeValid ? " (empfangen vor " + String(getUptimeString((currentMillis - timeTelegramReceivedMillis) / 1000)) + ")": "") + "</td>"
-              "<td>" + String(timeValid ? getTimeString(hour(), minute(), second()) : "-") + "</td></tr>\n"
+              "<td>" + String(timeValid ? getTimeString(now()) : "-") + "</td></tr>\n"
             : "") +
          "</table>\n"
 
@@ -232,7 +232,7 @@ void setupWebServer(){
       webServer.send(200, "text/html", getHtmlHeader(60, "/switchLog", "switchLog"));   
       webServer.sendContent(
          "<H2>Schaltprotokoll</H2>\n"
-         "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>Kanal</th><th>Ereignis</th><th>Quelle</th></tr>\n"
+         "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Tag</th><th>Uhrzeit</th><th>Kanal</th><th>Ereignis</th><th>Quelle</th></tr>\n"
       );
       
       // Log-Tabelle
@@ -266,8 +266,9 @@ void setupWebServer(){
             "<tr>"
             "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].entry + 1)   + "</td>"
             "<td>" + String(getUptimeString(switchLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
-            "<td>" + String(timestamp > 0 ? getDateString(year(timestamp), month(timestamp), day(timestamp)) : "-")    + "</td>"
-            "<td>" + String(timestamp > 0 ? getTimeString(hour(timestamp), minute(timestamp), second(timestamp)) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getDateString(timestamp) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getWeekdayString(timestamp) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getTimeString(timestamp) : "-")    + "</td>"
             "<td>" + String(switchLogRingbuffer[i % LOG_SIZE].channel + 1) + "</td>"
             "<td class=\"" + color + "\">" + switchLogRingbuffer[i % LOG_SIZE].type + "</td>"
             "<td>" + text + "</td>"
@@ -285,7 +286,7 @@ void setupWebServer(){
       webServer.send(200, "text/html", getHtmlHeader(60, "/connectionLog", "connectionLog"));
       webServer.sendContent(
          "<H2>Verbindungsprotokoll</H2>\n"
-         "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Uhrzeit</th><th>BSSID</th><th>Kanal</th><th>Ereignis</th></tr>\n"
+         "<table>\n<tr><th>#</th><th>Laufzeit</th><th>Datum</th><th>Tag</th><th>Uhrzeit</th><th>BSSID</th><th>Kanal</th><th>Ereignis</th></tr>\n"
       );
       
       // Log-Tabelle
@@ -307,8 +308,9 @@ void setupWebServer(){
             "<tr>"
             "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].entry + 1) + "</td>"
             "<td>" + String(getUptimeString(connectionLogRingbuffer[i % LOG_SIZE].uptimeSeconds))  + "</td>"
-            "<td>" + String(timestamp > 0 ? getDateString(year(timestamp), month(timestamp), day(timestamp)) : "-")    + "</td>"
-            "<td>" + String(timestamp > 0 ? getTimeString(hour(timestamp), minute(timestamp), second(timestamp)) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getDateString(timestamp) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getWeekdayString(timestamp) : "-")    + "</td>"
+            "<td>" + String(timestamp > 0 ? getTimeString(timestamp) : "-")    + "</td>"
             "<td>" + bssidString + "</td>"
             "<td>" + String(connectionLogRingbuffer[i % LOG_SIZE].wlanChannel) + "</td>" +
             (connectionLogRingbuffer[i % LOG_SIZE].message == LOG_KNXD_CONNECTION_CONFIRMED ? "<td class=\"green\">" : "<td>")

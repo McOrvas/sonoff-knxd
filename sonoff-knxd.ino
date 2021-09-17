@@ -520,8 +520,7 @@ void knxLoop(){
                   dateYear  = dateYear >= 90 ? 1900 + dateYear : 2000 + dateYear;                  
                   dateTelegramReceivedMillis = currentMillis;
                   
-                  Serial.print("Date telegram received: ");
-                  Serial.println(getDateString(dateYear, dateMonth, dateDay));
+                  Serial.printf("Date telegram received: %04d-%02d-%02d\n", dateYear, dateMonth, dateDay);
                   
                   Serial.printf("Old date and time: %04d-%02d-%02d %02d:%02d:%02d (%1d)\n", year(), month(), day(), hour(), minute(), second(), timeStatus());
                   setTime(hour(), minute(), second(), dateDay, dateMonth, dateYear);                  
@@ -543,8 +542,7 @@ void knxLoop(){
                   timeSeconds = messageResponse[10] & 0x3F;                    
                   timeTelegramReceivedMillis = currentMillis;
                   
-                  Serial.print("Time telegram received: ");
-                  Serial.println(getTimeString(timeHours, timeMinutes, timeSeconds));
+                  Serial.printf("Time telegram received: %02d:%02d:%02d\n", timeHours, timeMinutes, timeSeconds);
                   
                   Serial.printf("Old date and time: %04d-%02d-%02d %02d:%02d:%02d (%1d)\n", year(), month(), day(), hour(), minute(), second(), timeStatus());
                   setTime(timeHours, timeMinutes, timeSeconds, day(), month(), year());
@@ -813,18 +811,37 @@ char* getUptimeString(uint32_t totalSeconds){
 }
 
 
-char* getTimeString(uint8_t hours, uint8_t minutes, uint8_t seconds){
+char* getTimeString(time_t timestamp){
    static char timeString[9];   
-   snprintf(timeString, 9, "%02d:%02d:%02d", hours, minutes, seconds);
+   snprintf(timeString, 9, "%02d:%02d:%02d", hour(timestamp), minute(timestamp), second(timestamp));
    
    return timeString;   
 }
 
 
-char* getDateString(uint16_t year, uint8_t month, uint8_t day){   
+char* getDateString(time_t timestamp){   
    static char dateString[11];
-   snprintf(dateString, 11, "%04d-%02d-%02d", year, month, day);
+   snprintf(dateString, 11, "%04d-%02d-%02d", year(timestamp), month(timestamp), day(timestamp));
+   
    return dateString;
+}
+
+
+char* getWeekdayString(time_t timestamp){   
+   static char weekdayString[11];
+   
+   switch (weekday(timestamp)){
+      case 1  : strcpy(weekdayString, "Sonntag");    break;
+      case 2  : strcpy(weekdayString, "Montag");     break;
+      case 3  : strcpy(weekdayString, "Dienstag");   break;
+      case 4  : strcpy(weekdayString, "Mittwoch");   break;
+      case 5  : strcpy(weekdayString, "Donnerstag"); break;
+      case 6  : strcpy(weekdayString, "Freitag");    break;
+      case 7  : strcpy(weekdayString, "Samstag");    break;
+      default : strcpy(weekdayString, "Invalid");    break;
+   }
+
+   return weekdayString;
 }
 
 
