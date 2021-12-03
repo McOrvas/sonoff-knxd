@@ -28,6 +28,17 @@
 
 #include "Configuration.h"
 
+#if SCD30_ENABLE == true
+// https://www.arduino.cc/en/reference/wire
+#include <Wire.h>
+// https://github.com/sparkfun/SparkFun_SCD30_Arduino_Library
+#include <SparkFun_SCD30_Arduino_Library.h>
+
+#if LCD_ENABLE == true
+// https://github.com/Seeed-Studio/Grove_LCD_RGB_Backlight
+#include <rgb_lcd.h>
+#endif
+#endif
 
 /* 
  * *************************
@@ -35,7 +46,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2021-09-17",
+const char     *SOFTWARE_VERSION                      = "2021-12-03",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -119,7 +130,29 @@ uint32_t       knxdConnectionInitiatedCount     = 0,
                timeTelegramReceivedMillis       = 0,
                dateTelegramReceivedMillis       = 0,
                wifiConnectionInitiatedMillis    = 0,
-               wifiDisconnectedMillis           = WIFI_CONNECTION_LOST_DELAY_S * 1000;
+               wifiDisconnectedMillis           = WIFI_CONNECTION_LOST_DELAY_S * 1000,
+               lastAirMeasurementReceivedMillis = 0,
+               lastAirSensorPolledMillis        = 0,
+               airCO2LastSentMillis             = 0,
+               airTemperatureLastSentMillis     = 0,
+               airHumidityLastSentMillis        = 0;
+
+#if SCD30_ENABLE == true
+// Objekt for SDC30 environment sensor
+SCD30          airSensorSCD30;
+#if LCD_ENABLE == true
+// Object for LCD
+rgb_lcd        lcd;
+#endif
+#endif
+
+// Variables for air quality
+float          airTemperature         = 0.0,
+               airTemperatureLastSent = 0.0,
+               airHumidity            = 0.0,
+               airHumidityLastSent    = 0.0;
+uint16_t       airCO2                 = 0,
+               airCO2LastSent         = 0;
 
 // WLAN-Client
 WiFiClient              client;
@@ -251,7 +284,40 @@ void setup() {
    connectHandler     = WiFi.onStationModeConnected(onWifiConnected);
    disconnectHandler  = WiFi.onStationModeDisconnected(onWifiDisconnect);
    gotIpHandler       = WiFi.onStationModeGotIP(onWifiGotIP);
-   dhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout(onWifiDhcpTimeout);   
+   dhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout(onWifiDhcpTimeout);
+   
+   #if SCD30_ENABLE == true
+   // Initialize I2C bus
+   Wire.begin();
+   if (Wire.status() != I2C_OK) Serial.println("Something wrong with I2C");
+   
+   // Initialize SCD30 environment sensor
+   if (airSensorSCD30.begin() == false) {
+      Serial.println("The SCD30 did not respond. Please check wiring."); 
+      while(true) {
+         yield(); 
+         delay(1);
+      } 
+   }
+
+   // Sensirion no auto calibration
+   airSensorSCD30.setAutoSelfCalibration(false);
+   airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET);
+   airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION);
+
+   // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
+   airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);
+
+   Wire.setClock(100000L);            // 100 kHz SCD30 
+   Wire.setClockStretchLimit(200000L);// CO2-SCD30
+   
+   #if LCD_ENABLE == true
+   // Initialize LCD with 16 columns and 2 rows
+   lcd.begin(16, 2);
+   lcd.setCursor(0,0);
+   lcd.print("Initialization");
+   #endif   
+   #endif
 }
 
 
@@ -362,6 +428,11 @@ void loop() {
       if (LED_BLINKS_WHEN_CONNECTED)
          ledBlink();
    }
+   
+   #if SCD30_ENABLE == true
+   if ((currentMillis - lastAirSensorPolledMillis) >= AIR_SENSOR_POLL_INTERVAL_S * 1000)
+      measureAir();
+   #endif
 }
 
 
@@ -463,7 +534,7 @@ void knxLoop(){
 //             Serial.println(")");
             
             // Schalten oder sperren
-            if (      messageLength == 8 // Ein Bit bzw. DPT 1.001
+            if (      messageLength == 8
                   &&  messageResponse[6] == 0x00
                   && (messageResponse[7] & 0x80) == 0x80){
                
@@ -489,7 +560,7 @@ void knxLoop(){
             }
             
             // Status lesen
-            else if (messageLength == 8 // Ein Bit bzw. DPT 1.001
+            else if (messageLength == 8
                   && messageResponse[6] == 0x00
                   && messageResponse[7] == 0x00){
                
@@ -500,10 +571,29 @@ void knxLoop(){
                      Serial.print("Leseanforderung Status Kanal ");
                      Serial.println(ch + 1);
                      
-                     const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (GA_STATUS[ch][0] << 3) + GA_STATUS[ch][1], GA_STATUS[ch][2], 0x00, 0x40 | relayStatus[ch]};
-                     client.write(groupValueResponse, sizeof(groupValueResponse));
+                     responseGA(GA_STATUS[ch], relayStatus[ch]);
                   }
                }
+               
+               #if SCD30_ENABLE == true
+               // Read GA CO2
+               if (GA_AIR_CO2[0] + GA_AIR_CO2[1] + GA_AIR_CO2[2] > 0
+                  && messageResponse[4] == (GA_AIR_CO2[0] << 3) + GA_AIR_CO2[1] && messageResponse[5] == GA_AIR_CO2[2]) {
+                  responseGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
+               }
+               
+               // Read GA Temperature
+               if (GA_AIR_TEMPERATURE[0] + GA_AIR_TEMPERATURE[1] + GA_AIR_TEMPERATURE[2] > 0
+                  && messageResponse[4] == (GA_AIR_TEMPERATURE[0] << 3) + GA_AIR_TEMPERATURE[1] && messageResponse[5] == GA_AIR_TEMPERATURE[2]) {
+                  responseGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
+               }
+               
+               // Read GA Humidity
+               if (GA_AIR_HUMIDITY[0] + GA_AIR_HUMIDITY[1] + GA_AIR_HUMIDITY[2] > 0
+                  && messageResponse[4] == (GA_AIR_HUMIDITY[0] << 3) + GA_AIR_HUMIDITY[1] && messageResponse[5] == GA_AIR_HUMIDITY[2]) {
+                  responseGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
+               }
+               #endif
             }
             
             // Time or Date received
@@ -685,6 +775,54 @@ void ledBlink(){
 }
 
 
+#if SCD30_ENABLE == true
+void measureAir(){
+   if (airSensorSCD30.dataAvailable()) {
+      airCO2         = airSensorSCD30.getCO2();
+      airTemperature = airSensorSCD30.getTemperature();
+      airHumidity    = airSensorSCD30.getHumidity();
+      lastAirMeasurementReceivedMillis = currentMillis;
+      
+      #if LCD_ENABLE == true
+      static char lcdRow1[17],
+                  lcdRow2[17];
+      snprintf(lcdRow1, 17, "%02d:%02d %6d ppm", hour(), minute(), airCO2);
+      snprintf(lcdRow2, 17, "%4.1f %cC  %5.1f %%", airTemperature, 223, airHumidity);
+      lcd.setCursor(0,0);
+      lcd.print(lcdRow1);      
+      lcd.setCursor(0,1);
+      lcd.print(lcdRow2);
+      #endif
+      
+      // Send values to KNX
+      if (client.connected() && knxdConnectionConfirmed){
+         uint16_t airCO2Diff         = airCO2LastSent > airCO2 ? airCO2LastSent - airCO2 : airCO2 - airCO2LastSent;
+         float    airTemperatureDiff = airTemperatureLastSent > airTemperature ? airTemperatureLastSent - airTemperature : airTemperature - airTemperatureLastSent,
+                  airHumidityDiff    = airHumidityLastSent > airHumidity ? airHumidityLastSent - airHumidity : airHumidity - airHumidityLastSent;
+         
+         if ((currentMillis - airCO2LastSentMillis) >= KNX_SEND_INTERVAL_CO2_S * 1000 || airCO2Diff >= KNX_SEND_DIFFERENCE_VALUE_CO2){
+            writeGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
+            airCO2LastSent       = airCO2;
+            airCO2LastSentMillis = currentMillis;
+         }
+         if ((currentMillis - airTemperatureLastSentMillis) >= KNX_SEND_INTERVAL_TEMPERATURE_S * 1000 || airTemperatureDiff >= KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE){
+            writeGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
+            airTemperatureLastSent       = airTemperature;
+            airTemperatureLastSentMillis = currentMillis;
+         }
+         if ((currentMillis - airHumidityLastSentMillis) >= KNX_SEND_INTERVAL_HUMIDITY_S * 1000 || airHumidityDiff >= KNX_SEND_DIFFERENCE_VALUE_HUMIDITY){         
+            writeGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
+            airHumidityLastSent       = airHumidity;
+            airHumidityLastSentMillis = currentMillis;
+         }
+      }
+   }
+   
+   lastAirSensorPolledMillis = currentMillis;
+}
+#endif
+
+
 void switchRelay(const uint8_t ch, const boolean on, const boolean overrideLock, const char *source, const uint8_t *ga){
    if (ch >= CHANNELS){
       Serial.print("Ungültiger Kanal: ");
@@ -782,6 +920,30 @@ void writeGA(const uint8_t ga[], const boolean status){
 }
 
 
+void writeGA(const uint8_t ga[], const uint16_t data){
+   if (client.connected()){
+      const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x80, (data >> 8) & 0xFF, data & 0xFF};
+      client.write(groupValueWrite, sizeof(groupValueWrite));
+   }   
+}
+
+
+void responseGA(const uint8_t ga[], const boolean status){
+   if (client.connected()){
+      const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x40 | status};
+      client.write(groupValueResponse, sizeof(groupValueResponse));
+   }   
+}
+
+
+void responseGA(const uint8_t ga[], const uint16_t data){
+   if (client.connected()){
+      const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x40, (data >> 8) & 0xFF, data & 0xFF};
+      client.write(groupValueWrite, sizeof(groupValueWrite));
+   }   
+}
+
+
 void readGA(const uint8_t ga[]){
    if (client.connected()){
       const uint8_t groupValueRequest[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x00};
@@ -842,6 +1004,49 @@ char* getWeekdayString(time_t timestamp){
    }
 
    return weekdayString;
+}
+
+
+uint16_t encodeDpt9Internal(const int32_t value) {
+   uint16_t sign     = 0;
+   uint8_t  exponent = 0;   
+   int32_t  mantissa = value;
+   
+   if (value < 0)
+      sign = 0x8000;
+   
+   while (mantissa > 2047 || mantissa < -2048) {
+      exponent++;
+      mantissa >>= 1;
+   }
+   
+   uint16_t data = sign | (exponent << 11) | (mantissa & 0x07FF);   
+   
+   return data;
+}
+
+
+uint16_t encodeDpt9Int(const int32_t value) {
+   return encodeDpt9Internal(value * 100);
+}
+
+
+uint16_t encodeDpt9Float(const float value) {
+   return encodeDpt9Internal((int32_t) ((value * 100) + 0.5));
+}
+
+
+float decodeDpt9(uint16_t data) {   
+   int16_t mantissa = data & 0x07FF;
+   uint8_t exponent = (data >> 11) & 0xF;
+   bool sign = (data & 0x8000) == 0x8000;
+   
+   if (sign)
+      mantissa = mantissa | 0xF800;
+   
+   float value = (mantissa / 100.0) * (1 << exponent);
+   
+   return value;   
 }
 
 

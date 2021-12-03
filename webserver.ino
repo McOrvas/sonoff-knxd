@@ -30,7 +30,7 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl, String bodyId){
                   "font-weight: bold;"
                   "text-decoration: none;"
                   "}\n"
-               "body#maintenance a.box#maintenanceA, body#main a.box#mainA, body#connectionLog a.box#connectionLogA, body#switchLog a.box#switchLogA, a.box:hover {background-color: black;}\n"
+               "body#maintenance a.box#maintenanceA, body#main a.box#mainA, body#connectionLog a.box#connectionLogA, body#switchLog a.box#switchLogA, body#SCD30 a.box#SCD30A, a.box:hover {background-color: black;}\n"
             "</style>\n"
          "</head>\n"
          "<body id=\"" + bodyId + "\">\n"
@@ -48,6 +48,9 @@ String getHtmlHeader(uint8_t refreshRate, String refreshUrl, String bodyId){
          "<a class=\"box\" id=\"maintenanceA\"   href=\"maintenance\"   title=\"Ger&auml;tewartung\">Ger&auml;tewartung</a>\n"
          "<a class=\"box\" id=\"switchLogA\"     href=\"switchLog\"     title=\"Schaltprotokoll\">Schaltprotokoll</a>\n"
          "<a class=\"box\" id=\"connectionLogA\" href=\"connectionLog\" title=\"Verbindungsprotokoll\">Verbindungsprotokoll</a>\n"
+         #if SCD30_ENABLE == true
+         "<a class=\"box\" id=\"SCD30A\"         href=\"SCD30\"         title=\"Luftqualit&auml;t\">Luftqualit&auml;t</a>\n"
+         #endif
          "</p>\n";
 }
 
@@ -89,11 +92,11 @@ void setupWebServer(){
    
    webServer.on("/maintenance", [](){
       String gaSwitchString[CHANNELS],
-            gaLockString[CHANNELS],
-            gaStatusString[CHANNELS],
-            gaTimeString,
-            gaDateString,
-            bootDateTime = "";
+             gaLockString[CHANNELS],
+             gaStatusString[CHANNELS],
+             gaTimeString,
+             gaDateString,
+             bootDateTime = "";
       
       if (dateValid && timeValid){         
          bootDateTime = String(" (seit ") + getDateString(bootTime) + " " + getTimeString(bootTime) + ")";
@@ -184,6 +187,16 @@ void setupWebServer(){
          
          + String(GA_DATE_VALID ? gaDateString : "")
          + String(GA_TIME_VALID ? gaTimeString : "") +
+         
+         #if SCD30_ENABLE == true
+         "<tr><td>Temperatur</td>"
+         "<td>" + GA_AIR_TEMPERATURE[0] + "/" + GA_AIR_TEMPERATURE[1] + "/" + GA_AIR_TEMPERATURE[2] + "</td></tr>\n"
+         "<tr><td>Luftfeuchtigkeit</td>"
+         "<td>" + GA_AIR_HUMIDITY[0] + "/" + GA_AIR_HUMIDITY[1] + "/" + GA_AIR_HUMIDITY[2] + "</td></tr>\n"
+         "<tr><td>CO<sub>2</sub></td>"
+         "<td>" + GA_AIR_CO2[0] + "/" + GA_AIR_CO2[1] + "/" + GA_AIR_CO2[2] + "</td></tr>\n"
+         #endif
+         
          "</table>\n"
          
          "<H2>Verbindungsstatistik</H2>\n"
@@ -323,6 +336,56 @@ void setupWebServer(){
       webServer.sendContent(HTML_FOOTER);
       webServer.sendContent("");
    });
+   
+   #if SCD30_ENABLE == true
+   webServer.on("/SCD30", [](){
+      webServer.send(200, "text/html",
+         getHtmlHeader(60, "/SCD30", "SCD30") +
+         
+         "<H2>Luftqualit&auml;t</H2>\n"
+        
+         "<table>\n"
+         
+         "<tr>"
+         "<td>Temperatur</td>"
+         "<td>" + airTemperature + " &deg;C</td>"
+         "</tr>\n"
+         
+         "<tr>"
+         "<td>Luftfeuchtigkeit</td>"
+         "<td>" + airHumidity + " %</td>"
+         "</tr>\n"
+         
+         "<tr>"
+         "<td>CO<sub>2</sub></td>"
+         "<td>" + airCO2 + " ppm</td>"
+         "</tr>\n"
+         
+         "</table>\n"
+         
+         "<H2>SCD30 kalibrieren</H2>\n"
+         "<p>Hier kann der Sensor auf " + AIR_SENSOR_CO2_CALIBRATION_PPM + " ppm kalibriert werden. Daf&uuml;r muss er seit mind. 2 Minuten von frischer Luft umgeben sein!</p>\n"
+         "<a href=\"SCD30_Calibration\" title=\"SCD30 kalibrieren\"><button>Kalibrierung starten</button></a>"
+         
+         + HTML_FOOTER
+      );
+   });
+   
+   webServer.on("/SCD30_Calibration", [](){
+      airSensorSCD30.setForcedRecalibrationFactor(AIR_SENSOR_CO2_CALIBRATION_PPM);
+      Serial.printf("SCD30 calibrated successfully to an altitude of %d m and a CO2 concentration of %d ppm!\n", AIR_SENSOR_ALTITUDE_COMPENSATION, AIR_SENSOR_CO2_CALIBRATION_PPM);
+      
+      webServer.send(200, "text/html",
+         getHtmlHeader(15, "/SCD30", "SCD30") +
+         
+         "<H2>SCD30 kalibrieren</H2>\n"
+         "Kalibrierung abgeschlossen!"
+         "<p><a href=\"SCD30\" title=\"Zur&uuml;ck\">Zur&uuml;ck</a></p>\n"
+         
+         + HTML_FOOTER
+      );
+   });
+   #endif
    
    webServer.on("/ch1/on", [](){
       switchRelay(0, true, false, SWITCH_LOG_WEBSERVER, 0);
