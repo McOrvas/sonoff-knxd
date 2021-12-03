@@ -131,13 +131,16 @@ void setupWebServer(){
          "<H2>Ger&auml;tewartung</H2>\n"
          
          "<table>\n"
-         "<tr><td><a href=\"update\" title=\"Firmware aktualisieren\">Firmware</a></td>"
+         "<tr><td>Firmware</td>"
          "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
-         "<tr><td><a href=\"reboot\" title=\"Neustart\">Laufzeit</a></td></td>"
+         "<tr><td>Laufzeit</td></td>"
          "<td>" + getUptimeString(getUptimeSeconds()) + bootDateTime + "</td></tr>\n"
          "<tr><td>Freier Speicher</td>"
          "<td>" + ESP.getFreeHeap() + " byte</td></tr>\n"
          "</table>\n"
+         
+         "<p><a href=\"update\" title=\"Firmware aktualisieren\"><button>Firmware aktualisieren</button></a>"
+         "&nbsp;<a href=\"reboot\" title=\"Ger&auml;t neu starten\"><button>Ger&auml;t neu starten</button></a></p>\n"
          
          "<H2>Netzwerk</H2>\n"
          
