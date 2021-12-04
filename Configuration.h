@@ -71,13 +71,13 @@ const boolean  SWITCH_ON_WHEN_LOCKED[]    = {false, false, false, false},
                LOCK_INVERTED[]            = {false, false, false, false};
 
 // Waiting time in seconds between a closed connection to the EIBD/KNXD will be reestablished
-const uint32_t CONNECTION_LOST_DELAY_S            =  10,
+const uint32_t CONNECTION_LOST_DELAY_S            =   10,
 // Maximum time in milliseconds after which a confirmation of the newly established connection has to be received from the EIBD/KNXD
-               CONNECTION_CONFIRMATION_TIMEOUT_MS = 500,
+               CONNECTION_CONFIRMATION_TIMEOUT_MS =  500,
 // If no telegram was received during this time in minutes, the connection to the EIBD/KNXD will be reestablished. Set to 0 to disable this function.
-               MISSING_TELEGRAM_TIMEOUT_MIN       = 0,
+               MISSING_TELEGRAM_TIMEOUT_MIN       =   60,
 // If a received telegram is not completed during this time, the connection to the EIBD/KNXD will be reestablished. Set to 0 to disable this function.
-               INCOMPLETE_TELEGRAM_TIMEOUT_MS     = 0;
+               INCOMPLETE_TELEGRAM_TIMEOUT_MS     = 5000;
 
 
 /*
@@ -177,3 +177,39 @@ const uint32_t KA_IDLE_S                          = 1800,
                KA_INTERVAL_S                      =   30,
 // Keepalive retry is the number of retransmissions to be carried out before declaring that remote end is not available.
                KA_RETRY_COUNT                     =   10;
+
+
+/* 
+ * ********************************
+ * *** SCD30 air sensor options *** 
+ * ********************************
+ */  
+
+// Set to true to activate the SCD30 air sensor options. Without SCD30, this whole section can be deleted from the configuration.
+#define SCD30_ENABLE false
+// Set to true to activate the LCD to display air quality values. The LCD can only be used together with the SCD30.
+#define LCD_ENABLE   false
+
+const uint8_t  GA_AIR_TEMPERATURE[] = {31, 1, 0}, // DPT 9.001 (2 bytes)
+               GA_AIR_HUMIDITY[]    = {31, 1, 1}, // DPT 9.007 (2 bytes)
+               GA_AIR_CO2[]         = {31, 1, 2}; // DPT 9.008 (2 bytes)
+               
+               // How often the SCD30 measures internally (seconds)
+const uint16_t AIR_SENSOR_MEASUREMENT_INTERVAL_S     =  10,
+               // How often the sensor is polled for new measurement data (seconds)
+               AIR_SENSOR_POLL_INTERVAL_S            =   1,
+               // The altitude in meters above sea level
+               AIR_SENSOR_ALTITUDE_COMPENSATION_M    =   0,
+               // The CO2 concentration of the atmosphere for the manual calibraton (~400 ppm)
+               AIR_SENSOR_CO2_CALIBRATION_PPM        = 400;
+               // A temperature offset for measurement correction (Kelvin)
+const float    AIR_SENSOR_TEMPERATURE_OFFSET_K       = 0.0;
+               
+               // The maximum time between two KNX transmissions (seconds)
+const uint16_t KNX_SEND_INTERVAL_CO2_S               = 900,
+               KNX_SEND_INTERVAL_TEMPERATURE_S       = 900,
+               KNX_SEND_INTERVAL_HUMIDITY_S          = 900, 
+               // The maximum value difference between two KNX transmissions
+               KNX_SEND_DIFFERENCE_VALUE_CO2         = 50;
+const float    KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE = 0.2,
+               KNX_SEND_DIFFERENCE_VALUE_HUMIDITY    = 1.0;

@@ -376,7 +376,7 @@ void setupWebServer(){
    
    webServer.on("/SCD30_Calibration", [](){
       airSensorSCD30.setForcedRecalibrationFactor(AIR_SENSOR_CO2_CALIBRATION_PPM);
-      Serial.printf("SCD30 calibrated successfully to an altitude of %d m and a CO2 concentration of %d ppm!\n", AIR_SENSOR_ALTITUDE_COMPENSATION, AIR_SENSOR_CO2_CALIBRATION_PPM);
+      Serial.printf("SCD30 calibrated successfully to an altitude of %d m and a CO2 concentration of %d ppm!\n", AIR_SENSOR_ALTITUDE_COMPENSATION_M, AIR_SENSOR_CO2_CALIBRATION_PPM);
       
       webServer.send(200, "text/html",
          getHtmlHeader(15, "/SCD30", "SCD30") +

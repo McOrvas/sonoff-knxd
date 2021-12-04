@@ -302,8 +302,8 @@ void setup() {
 
    // Sensirion no auto calibration
    airSensorSCD30.setAutoSelfCalibration(false);
-   airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET);
-   airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION);
+   airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET_K);
+   airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION_M);
 
    // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
    airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);
