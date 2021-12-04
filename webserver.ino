@@ -132,7 +132,7 @@ void setupWebServer(){
          
          "<table>\n"
          "<tr><td>Firmware</td>"
-         "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
+         "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\" target=\"_blank\" rel=\"noopener noreferrer\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
          "<tr><td>Laufzeit</td></td>"
          "<td>" + getUptimeString(getUptimeSeconds()) + bootDateTime + "</td></tr>\n"
          "<tr><td>Freier Speicher</td>"
