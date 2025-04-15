@@ -342,36 +342,47 @@ void setupWebServer(){
    
    #if SCD30_ENABLE == true
    webServer.on("/SCD30", [](){
-      webServer.send(200, "text/html",
-         getHtmlHeader(60, "/SCD30", "SCD30") +
+      if (airSensorSCD30Connected && !airSensorSCD30Stuck){
+         webServer.send(200, "text/html",
+            getHtmlHeader(60, "/SCD30", "SCD30") +
+            
+            "<H2>Luftqualit&auml;t</H2>\n"
          
-         "<H2>Luftqualit&auml;t</H2>\n"
-        
-         "<table>\n"
-         
-         "<tr>"
-         "<td>Temperatur</td>"
-         "<td>" + airTemperature + " &deg;C</td>"
-         "</tr>\n"
-         
-         "<tr>"
-         "<td>Luftfeuchtigkeit</td>"
-         "<td>" + airHumidity + " %</td>"
-         "</tr>\n"
-         
-         "<tr>"
-         "<td>CO<sub>2</sub></td>"
-         "<td>" + airCO2 + " ppm</td>"
-         "</tr>\n"
-         
-         "</table>\n"
-         
-         "<H2>SCD30 kalibrieren</H2>\n"
-         "<p>Hier kann der Sensor auf " + AIR_SENSOR_CO2_CALIBRATION_PPM + " ppm kalibriert werden. Daf&uuml;r muss er seit mind. 2 Minuten von frischer Luft umgeben sein!</p>\n"
-         "<a href=\"SCD30_Calibration\" title=\"SCD30 kalibrieren\"><button>Kalibrierung starten</button></a>"
-         
-         + HTML_FOOTER
-      );
+            "<table>\n"
+            
+            "<tr>"
+            "<td>Temperatur</td>"
+            "<td>" + airTemperature + " &deg;C</td>"
+            "</tr>\n"
+            
+            "<tr>"
+            "<td>Luftfeuchtigkeit</td>"
+            "<td>" + airHumidity + " %</td>"
+            "</tr>\n"
+            
+            "<tr>"
+            "<td>CO<sub>2</sub></td>"
+            "<td>" + airCO2 + " ppm</td>"
+            "</tr>\n"
+            
+            "</table>\n"
+            
+            "<H2>SCD30 kalibrieren</H2>\n"
+            "<p>Hier kann der Sensor auf " + AIR_SENSOR_CO2_CALIBRATION_PPM + " ppm kalibriert werden. Daf&uuml;r muss er seit mind. 2 Minuten von frischer Luft umgeben sein!</p>\n"
+            "<a href=\"SCD30_Calibration\" title=\"SCD30 kalibrieren\"><button>Kalibrierung starten</button></a>"
+            
+            + HTML_FOOTER
+         );
+      }
+      else {
+         webServer.send(200, "text/html",
+            getHtmlHeader(60, "/SCD30", "SCD30") +
+            
+            "<span class=\"red\">Der SCD30 ist nicht angeschlossen oder liefert keine Messwerte!</span>\n"
+            
+            + HTML_FOOTER
+         );
+      }
    });
    
    webServer.on("/SCD30_Calibration", [](){

@@ -108,6 +108,7 @@ boolean        knxdConnectionInitiated          = false,
                dateValid                        = false,
                missingTelegramTimeoutEnabled    = false,
                incompleteTelegramTimeoutEnabled = false,
+               airSensorSCD30Connected          = false,
                airSensorSCD30Stuck              = false;
 
 uint32_t       knxdConnectionInitiatedCount     = 0,
@@ -300,12 +301,9 @@ void setup() {
    if (Wire.status() != I2C_OK) Serial.println("Something wrong with I2C");
    
    // Initialize SCD30 environment sensor
-   if (airSensorSCD30.begin() == false) {
+   airSensorSCD30Connected = airSensorSCD30.begin();
+   if (!airSensorSCD30Connected) {
       Serial.println("The SCD30 did not respond. Please check wiring."); 
-      while(true) {
-         yield(); 
-         delay(1);
-      } 
    }
 
    // Sensirion no auto calibration
@@ -792,6 +790,8 @@ void measureAir(){
    // Check if the SC30 has not delivered new data for a long (10 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
    // and reset values to 0, reset the I2C connection and restart the SCD30.
    else if (!airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 10000){
+      Serial.println("The SCD30 no longer provides any data. Trying to reset the I2C connection and to reinitialize the sensor."); 
+
       airSensorSCD30Stuck = true;
       airCO2              = 0;
       airTemperature      = 0.0;
@@ -803,7 +803,7 @@ void measureAir(){
       Wire.setClockStretchLimit(200000L);
       
       // Restart SCD30
-      airSensorSCD30.begin();
+      airSensorSCD30Connected = airSensorSCD30.begin();
 
       // Sensirion no auto calibration
       airSensorSCD30.setAutoSelfCalibration(false);
@@ -816,6 +816,8 @@ void measureAir(){
    // Check if the SC30 has not delivered new data for a long (20 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
    // and restart the ESP, if the reset of I2C and SCD30 was not successful (condition above).
    else if (airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 20000){
+      Serial.println("The SCD30 still no longer provides any data. Restarting the ESP."); 
+      delay(1000);
       ESP.restart();
    }
    
