@@ -11,6 +11,10 @@
  * Sonoff 4CH
  * Board:              Generic ESP8285 Module
  * Flash Size:         1M (64K SPIFFS) [Notwendig für Updates über die Weboberfläche]
+ * 
+ * Adafruit Feather HUZZAH ESP8266
+ * Board:              Adafruit Feather HUZZAH ESP8266
+ * Flash Size:         4MB (FS:2MB OTA:~1019KB) [Notwendig für Updates über die Weboberfläche]
  */
 
 #include <TimeLib.h>
@@ -46,7 +50,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2021-12-03",
+const char     *SOFTWARE_VERSION                      = "2025-04-14",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -103,7 +107,8 @@ boolean        knxdConnectionInitiated          = false,
                timeValid                        = false,
                dateValid                        = false,
                missingTelegramTimeoutEnabled    = false,
-               incompleteTelegramTimeoutEnabled = false;
+               incompleteTelegramTimeoutEnabled = false,
+               airSensorSCD30Stuck              = false;
 
 uint32_t       knxdConnectionInitiatedCount     = 0,
                knxdConnectionFailedCount        = 0,
@@ -289,6 +294,9 @@ void setup() {
    #if SCD30_ENABLE == true
    // Initialize I2C bus
    Wire.begin();
+   Wire.setClock(100000L);             // 100 kHz SCD30 (standard value)
+   Wire.setClockStretchLimit(200000L); // CO2-SCD30 
+
    if (Wire.status() != I2C_OK) Serial.println("Something wrong with I2C");
    
    // Initialize SCD30 environment sensor
@@ -307,9 +315,6 @@ void setup() {
 
    // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
    airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);
-
-   Wire.setClock(100000L);            // 100 kHz SCD30 
-   Wire.setClockStretchLimit(200000L);// CO2-SCD30
    
    #if LCD_ENABLE == true
    // Initialize LCD with 16 columns and 2 rows
@@ -777,47 +782,80 @@ void ledBlink(){
 
 #if SCD30_ENABLE == true
 void measureAir(){
-   if (airSensorSCD30.dataAvailable()) {
+   if (airSensorSCD30.dataAvailable()){
       airCO2         = airSensorSCD30.getCO2();
       airTemperature = airSensorSCD30.getTemperature();
       airHumidity    = airSensorSCD30.getHumidity();
       lastAirMeasurementReceivedMillis = currentMillis;
+      airSensorSCD30Stuck = false;
+   }
+   // Check if the SC30 has not delivered new data for a long (10 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
+   // and reset values to 0, reset the I2C connection and restart the SCD30.
+   else if (!airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 10000){
+      airSensorSCD30Stuck = true;
+      airCO2              = 0;
+      airTemperature      = 0.0;
+      airHumidity         = 0.0;
+
+      // Restart I2C
+      Wire.begin(); 
+      Wire.setClock(100000L);
+      Wire.setClockStretchLimit(200000L);
       
-      #if LCD_ENABLE == true
-      static char lcdRow1[17],
-                  lcdRow2[17];
-      snprintf(lcdRow1, 17, "%02d:%02d %6d ppm", hour(), minute(), airCO2);
-      snprintf(lcdRow2, 17, "%4.1f %cC  %5.1f %%", airTemperature, 223, airHumidity);
-      lcd.setCursor(0,0);
-      lcd.print(lcdRow1);      
-      lcd.setCursor(0,1);
-      lcd.print(lcdRow2);
-      #endif
-      
-      // Send values to KNX
-      if (client.connected() && knxdConnectionConfirmed){
-         uint16_t airCO2Diff         = airCO2LastSent > airCO2 ? airCO2LastSent - airCO2 : airCO2 - airCO2LastSent;
-         float    airTemperatureDiff = airTemperatureLastSent > airTemperature ? airTemperatureLastSent - airTemperature : airTemperature - airTemperatureLastSent,
-                  airHumidityDiff    = airHumidityLastSent > airHumidity ? airHumidityLastSent - airHumidity : airHumidity - airHumidityLastSent;
-         
-         if ((currentMillis - airCO2LastSentMillis) >= KNX_SEND_INTERVAL_CO2_S * 1000 || airCO2Diff >= KNX_SEND_DIFFERENCE_VALUE_CO2){
-            writeGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
-            airCO2LastSent       = airCO2;
-            airCO2LastSentMillis = currentMillis;
-         }
-         if ((currentMillis - airTemperatureLastSentMillis) >= KNX_SEND_INTERVAL_TEMPERATURE_S * 1000 || airTemperatureDiff >= KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE){
-            writeGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
-            airTemperatureLastSent       = airTemperature;
-            airTemperatureLastSentMillis = currentMillis;
-         }
-         if ((currentMillis - airHumidityLastSentMillis) >= KNX_SEND_INTERVAL_HUMIDITY_S * 1000 || airHumidityDiff >= KNX_SEND_DIFFERENCE_VALUE_HUMIDITY){         
-            writeGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
-            airHumidityLastSent       = airHumidity;
-            airHumidityLastSentMillis = currentMillis;
-         }
-      }
+      // Restart SCD30
+      airSensorSCD30.begin();
+
+      // Sensirion no auto calibration
+      airSensorSCD30.setAutoSelfCalibration(false);
+      airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET_K);
+      airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION_M);
+
+      // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
+      airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);      
+   }
+   // Check if the SC30 has not delivered new data for a long (20 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
+   // and restart the ESP, if the reset of I2C and SCD30 was not successful (condition above).
+   else if (airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 20000){
+      ESP.restart();
    }
    
+   #if LCD_ENABLE == true
+   static char lcdRow1[17],
+               lcdRow2[17];
+   snprintf(lcdRow1, 17, "%02d:%02d %6d ppm", hour(), minute(), airCO2);
+   snprintf(lcdRow2, 17, "%4.1f %cC  %5.1f %%", airTemperature, 223, airHumidity);
+   lcd.setCursor(0,0);
+   lcd.print(lcdRow1);      
+   lcd.setCursor(0,1);
+   lcd.print(lcdRow2);
+   
+   //Serial.println(lcdRow1);
+   //Serial.println(lcdRow2);
+   #endif
+   
+   // Send values to KNX
+   if (client.connected() && knxdConnectionConfirmed){
+      uint16_t airCO2Diff         = airCO2LastSent > airCO2 ? airCO2LastSent - airCO2 : airCO2 - airCO2LastSent;
+      float    airTemperatureDiff = airTemperatureLastSent > airTemperature ? airTemperatureLastSent - airTemperature : airTemperature - airTemperatureLastSent,
+               airHumidityDiff    = airHumidityLastSent > airHumidity ? airHumidityLastSent - airHumidity : airHumidity - airHumidityLastSent;
+      
+      if ((currentMillis - airCO2LastSentMillis) >= KNX_SEND_INTERVAL_CO2_S * 1000 || airCO2Diff >= KNX_SEND_DIFFERENCE_VALUE_CO2){
+         writeGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
+         airCO2LastSent       = airCO2;
+         airCO2LastSentMillis = currentMillis;
+      }
+      if ((currentMillis - airTemperatureLastSentMillis) >= KNX_SEND_INTERVAL_TEMPERATURE_S * 1000 || airTemperatureDiff >= KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE){
+         writeGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
+         airTemperatureLastSent       = airTemperature;
+         airTemperatureLastSentMillis = currentMillis;
+      }
+      if ((currentMillis - airHumidityLastSentMillis) >= KNX_SEND_INTERVAL_HUMIDITY_S * 1000 || airHumidityDiff >= KNX_SEND_DIFFERENCE_VALUE_HUMIDITY){         
+         writeGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
+         airHumidityLastSent       = airHumidity;
+         airHumidityLastSentMillis = currentMillis;
+      }
+   }
+
    lastAirSensorPolledMillis = currentMillis;
 }
 #endif
