@@ -6,16 +6,31 @@ It's a simple project, all needed configuration (WLAN access / KNX group address
 ## Arduino IDE settings
 Boards Manager URL: http://arduino.esp8266.com/stable/package_esp8266com_index.json
 
-### Sonoff S20
+### Used libraries
+- Time (1.6.1)
+  - https://playground.arduino.cc/Code/Time/
+  - https://www.pjrc.com/teensy/td_libs_Time.html
+  - https://github.com/PaulStoffregen/Time
+- SparkFun SCD30 Arduino Library (1.0.20) (for CO2 traffic light with Sensirion SCD30)
+  - https://github.com/sparkfun/SparkFun_SCD30_Arduino_Library
+- Grove - LCD RGB Backlight (1.0.2) (optional for CO2 traffic light with Sensirion SCD30)
+  - https://github.com/Seeed-Studio/Grove_LCD_RGB_Backlight
+
+### Tested hardware
+#### Sonoff S20 / Nous A1T
 Option     | Value
 :---       | :---
 Board      | Generic ESP8266 Module
-Flash Mode | DOUT (compatible)
 Flash Size | 1MB (FS:64KB OTA:~470KB)
 
-### Sonoff 4CH
+#### Sonoff 4CH
 Option     | Value
 :---       | :---
 Board      | Generic ESP8285 Module
-Flash Mode | DOUT (compatible)
 Flash Size | 1MB (FS:64KB OTA:~470KB)
+
+#### CO2 traffic light with Sensirion SCD30 air quality sensors
+Option     | Value
+:---       | :---
+Board      | Adafruit Feather HUZZAH ESP8266
+Flash Size | 4MB (FS:2MB OTA:~1019KB)
