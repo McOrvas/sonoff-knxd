@@ -4,17 +4,16 @@
  * Boardverwalter-URL: http://arduino.esp8266.com/stable/package_esp8266com_index.json
  * 
  * Sonoff S20
- * Board:              Generic ESP8266 Module
- * Flash Mode:         DOUT
- * Flash Size:         1M (64K SPIFFS) [Notwendig für Updates über die Weboberfläche]
+ * Board:      Generic ESP8266 Module
+ * Flash Size: 1MB (FS:64KB OTA:~470KB) [Notwendig für Updates über die Weboberfläche]
  * 
  * Sonoff 4CH
- * Board:              Generic ESP8285 Module
- * Flash Size:         1M (64K SPIFFS) [Notwendig für Updates über die Weboberfläche]
+ * Board:      Generic ESP8285 Module
+ * Flash Size: 1MB (FS:64KB OTA:~470KB) [Notwendig für Updates über die Weboberfläche]
  * 
  * Adafruit Feather HUZZAH ESP8266
- * Board:              Adafruit Feather HUZZAH ESP8266
- * Flash Size:         4MB (FS:2MB OTA:~1019KB) [Notwendig für Updates über die Weboberfläche]
+ * Board:      Adafruit Feather HUZZAH ESP8266
+ * Flash Size: 4MB (FS:2MB OTA:~1019KB) [Notwendig für Updates über die Weboberfläche]
  */
 
 #include <TimeLib.h>
@@ -50,7 +49,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2025-04-14",
+const char     *SOFTWARE_VERSION                      = "2025-04-17",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -119,6 +118,7 @@ uint32_t       knxdConnectionInitiatedCount     = 0,
                missingTelegramTimeouts          = 0,
                incompleteTelegramTimeouts       = 0,
                wifiDisconnections               = 0,
+               wifiCurrentConnectionAttempts    = 0,
                knxdDisconnections               = 0,               
                
 // Variablen zur Zeitmessung
@@ -335,11 +335,18 @@ void onWifiConnected(const WiFiEventStationModeConnected& event) {
 
 
 void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
-	wifiConnected = 3;
-    logConnectionEvent(LOG_WLAN_DHCP_COMPLETED);
-    Serial.print("IP-Adresse: ");
-    Serial.println(WiFi.localIP());
+   wifiConnected = 3;
+   wifiCurrentConnectionAttempts = 0;
+   logConnectionEvent(LOG_WLAN_DHCP_COMPLETED);
+   Serial.print("IP-Adresse: ");
+   Serial.println(WiFi.localIP());
 
+   // Disable the Access Point again
+   if (WiFi.getMode() == WIFI_AP_STA || WiFi.getMode() == WIFI_AP) {
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      Serial.println("Deaktiviere den Access Point und setze den WLAN-Modus zurück auf WIFI_STA.");
+   }
 }
 
 
@@ -359,8 +366,20 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
    resetKnxdConnection();
    logConnectionEvent(LOG_WLAN_DISCONNECTED); 
    Serial.print(LOG_WLAN_DISCONNECTED);
-   Serial.print(": ");
-   Serial.println(event.reason);
+   Serial.print(", Grund: ");
+   Serial.print(event.reason);
+   Serial.print(" (");
+   Serial.print(wifiCurrentConnectionAttempts);
+   Serial.println(". Versuch)");
+
+   // After 3 attempts, open a fallback access point to enable flashing.
+   if (wifiCurrentConnectionAttempts == 3) {
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.softAP("sonoff-knxd", "winter07");
+      IPAddress IP = WiFi.softAPIP();
+      Serial.print("Verbindung zum WLAN nicht möglich, öffne Access Point zum Flashen. SSID 'sonoff-knxd', Passwort 'winter07', IP-Adresse: ");
+      Serial.println(IP);
+   }
 }
 
 
@@ -402,6 +421,7 @@ void loop() {
       if (wifiConnected == 0 && (currentMillis - wifiDisconnectedMillis) >= WIFI_CONNECTION_LOST_DELAY_S * 1000) {
          wifiConnected = 1;
          wifiConnectionInitiatedMillis = currentMillis;
+         wifiCurrentConnectionAttempts++;
          WiFi.begin(SSID, PASSWORD);
          logConnectionEvent(LOG_WLAN_CONNECTION_INITIATED);
          Serial.print("Verbinde mit WLAN '");
@@ -424,13 +444,13 @@ void loop() {
       // KNX-Kommunikation
       knxLoop();
       
-      // Webserver 
-      webServer.handleClient();
-      
       // Falls eine Verbindung zum EIBD/KNXD aufgebaut ist, blinkt die LED sofern gewünscht.
       if (LED_BLINKS_WHEN_CONNECTED)
          ledBlink();
    }
+
+   // Always run the web server, regardless of the WLAN mode. Necessary for the fallback access point.
+   webServer.handleClient();
    
    #if SCD30_ENABLE == true
    if ((currentMillis - lastAirSensorPolledMillis) >= AIR_SENSOR_POLL_INTERVAL_S * 1000)
