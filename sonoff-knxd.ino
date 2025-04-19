@@ -3,7 +3,7 @@
  * 
  * Boardverwalter-URL: http://arduino.esp8266.com/stable/package_esp8266com_index.json
  * 
- * Sonoff S20
+ * Sonoff S20 / Nous A1T
  * Board:      Generic ESP8266 Module
  * Flash Size: 1MB (FS:64KB OTA:~470KB) [Notwendig für Updates über die Weboberfläche]
  * 
@@ -11,7 +11,7 @@
  * Board:      Generic ESP8285 Module
  * Flash Size: 1MB (FS:64KB OTA:~470KB) [Notwendig für Updates über die Weboberfläche]
  * 
- * Adafruit Feather HUZZAH ESP8266
+ * CO2 traffic light with Sensirion SCD30 air quality sensors
  * Board:      Adafruit Feather HUZZAH ESP8266
  * Flash Size: 4MB (FS:2MB OTA:~1019KB) [Notwendig für Updates über die Weboberfläche]
  */
@@ -49,7 +49,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2025-04-17",
+const char     *SOFTWARE_VERSION                      = "2025-04-19",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -974,7 +974,7 @@ void lockRelay(const uint8_t ch, const boolean lock, const char *source, const u
 
 void writeGA(const uint8_t ga[], const boolean status){
    if (client.connected()){
-      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x80 | status};
+      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1], ga[2]), 0x00, (uint8_t)(0x80 | status)};
       client.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
@@ -982,7 +982,7 @@ void writeGA(const uint8_t ga[], const boolean status){
 
 void writeGA(const uint8_t ga[], const uint16_t data){
    if (client.connected()){
-      const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x80, (data >> 8) & 0xFF, data & 0xFF};
+      const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, 0x80, (uint8_t)((data >> 8) & 0xFF), (uint8_t)(data & 0xFF)};
       client.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
@@ -990,7 +990,7 @@ void writeGA(const uint8_t ga[], const uint16_t data){
 
 void responseGA(const uint8_t ga[], const boolean status){
    if (client.connected()){
-      const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x40 | status};
+      const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, (uint8_t)(0x40 | status)};
       client.write(groupValueResponse, sizeof(groupValueResponse));
    }   
 }
@@ -998,7 +998,7 @@ void responseGA(const uint8_t ga[], const boolean status){
 
 void responseGA(const uint8_t ga[], const uint16_t data){
    if (client.connected()){
-      const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x40, (data >> 8) & 0xFF, data & 0xFF};
+      const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, 0x40, (uint8_t)((data >> 8) & 0xFF), (uint8_t)(data & 0xFF)};
       client.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
@@ -1006,7 +1006,7 @@ void responseGA(const uint8_t ga[], const uint16_t data){
 
 void readGA(const uint8_t ga[]){
    if (client.connected()){
-      const uint8_t groupValueRequest[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (ga[0] << 3) + ga[1], ga[2], 0x00, 0x00};
+      const uint8_t groupValueRequest[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, 0x00};
       client.write(groupValueRequest, sizeof(groupValueRequest));
    }   
 }
@@ -1107,6 +1107,35 @@ float decodeDpt9(uint16_t data) {
    float value = (mantissa / 100.0) * (1 << exponent);
    
    return value;   
+}
+
+
+String formatNumberHTML(uint32_t number) {
+   char buffer[32];
+
+   if (number >= 1000000000) {
+      uint32_t a = number / 1000000000;
+      uint32_t b = (number / 1000000) % 1000;
+      uint32_t c = (number / 1000) % 1000;
+      uint32_t d = number % 1000;
+      snprintf(buffer, sizeof(buffer), "%u&#8239;%03u&#8239;%03u&#8239;%03u", a, b, c, d);
+   } 
+   else if (number >= 1000000) {
+      uint32_t a = number / 1000000;
+      uint32_t b = (number / 1000) % 1000;
+      uint32_t c = number % 1000;
+      snprintf(buffer, sizeof(buffer), "%u&#8239;%03u&#8239;%03u", a, b, c);
+   }
+   else if (number >= 1000) {
+      uint32_t a = number / 1000;
+      uint32_t b = number % 1000;
+      snprintf(buffer, sizeof(buffer), "%u&#8239;%03u", a, b);
+   }
+   else {
+      snprintf(buffer, sizeof(buffer), "%u", number);
+   }
+
+   return String(buffer);
 }
 
 

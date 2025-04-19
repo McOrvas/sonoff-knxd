@@ -133,10 +133,14 @@ void setupWebServer(){
          "<table>\n"
          "<tr><td>Firmware</td>"
          "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\" target=\"_blank\" rel=\"noopener noreferrer\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
-         "<tr><td>Laufzeit</td></td>"
+         "<tr><td>Laufzeit</td>"
          "<td>" + getUptimeString(getUptimeSeconds()) + bootDateTime + "</td></tr>\n"
-         "<tr><td>Freier Speicher</td>"
-         "<td>" + ESP.getFreeHeap() + " byte</td></tr>\n"
+         "<tr><td>Zusammenhängend / insgesamt freier Heap</td>"
+         "<td>" + formatNumberHTML(ESP.getMaxFreeBlockSize()) + " / " + formatNumberHTML(ESP.getFreeHeap()) + " Byte</td></tr>\n"
+         "<tr><td>Aktuelle / maximale Sketch-Gr&ouml;&szlig;e</td>"
+         "<td>" + formatNumberHTML(ESP.getSketchSize()) + " / " + formatNumberHTML(ESP.getFreeSketchSpace()) + " Byte</td></tr>\n"
+         "<tr><td>Flash-Gr&ouml;&szlig;e / -Geschwindigkeit</td>"
+         "<td>" + formatNumberHTML(ESP.getFlashChipSize()) + " Byte / " + ESP.getFlashChipSpeed() / 1000000 + " MHz</td></tr>\n"
          "</table>\n"
          
          "<p><a href=\"update\" title=\"Firmware aktualisieren\"><button>Firmware aktualisieren</button></a>"
@@ -227,7 +231,7 @@ void setupWebServer(){
          
          "<tr><th colspan=\"2\">Sonstiges</th></tr>\n"
          "<tr><td>Empfangene Gruppentelegramme</td>"
-         "<td>" + String(receivedTelegrams) + " (&#8960; " + String(receivedTelegrams / (float) getUptimeSeconds()) +" / s)</td></tr>\n"
+         "<td>" + formatNumberHTML(receivedTelegrams) + " (&#8960; " + String(receivedTelegrams / (float) getUptimeSeconds()) +" / s)</td></tr>\n"
 
          + String(GA_DATE_VALID
             ? "<tr><td>Aktuelles Datum" + String(dateValid ? " (empfangen vor " + String(getUptimeString((currentMillis - dateTelegramReceivedMillis) / 1000)) + ")": "") + "</td>"
