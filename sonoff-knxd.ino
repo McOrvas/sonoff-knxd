@@ -974,7 +974,7 @@ void lockRelay(const uint8_t ch, const boolean lock, const char *source, const u
 
 void writeGA(const uint8_t ga[], const boolean status){
    if (client.connected()){
-      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1], ga[2]), 0x00, (uint8_t)(0x80 | status)};
+      const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, (uint8_t)(0x80 | status)};
       client.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
