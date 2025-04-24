@@ -97,6 +97,10 @@ void setupWebServer(){
              gaTimeString,
              gaDateString,
              bootDateTime = "";
+      const uint32_t sketchSize       = ESP.getSketchSize(),
+                     freeSketchSpace  = ESP.getFreeSketchSpace(),
+                     sketchPercentage = 100 * sketchSize / freeSketchSpace;
+
       
       if (dateValid && timeValid){         
          bootDateTime = String(" (seit ") + getDateString(bootTime) + " " + getTimeString(bootTime) + ")";
@@ -131,18 +135,24 @@ void setupWebServer(){
          "<H2>Ger&auml;tewartung</H2>\n"
          
          "<table>\n"
-         "<tr><td>Firmware</td>"
-         "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\" target=\"_blank\" rel=\"noopener noreferrer\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
          "<tr><td>Laufzeit</td>"
          "<td>" + getUptimeString(getUptimeSeconds()) + bootDateTime + "</td></tr>\n"
+         "<tr><td>Letzter Reset</td>"
+         "<td>" + ESP.getResetReason() + "</td></tr>\n"
+         "<tr><td>Firmware</td>"
+         "<td><a href=\"https://github.com/McOrvas/sonoff-knxd\" target=\"_blank\" rel=\"noopener noreferrer\">sonoff-knxd</a> (" + SOFTWARE_VERSION + ")</td></tr>\n"
+         "<tr><td>SDK-Version</td>"
+         "<td>" + ESP.getSdkVersion() + "</td></tr>\n"
          "<tr><td>Zusammenhängend / insgesamt freier Heap</td>"
-         "<td>" + formatNumberHTML(ESP.getMaxFreeBlockSize()) + " / " + formatNumberHTML(ESP.getFreeHeap()) + " Byte</td></tr>\n"
+         "<td>" + formatNumberHTML(ESP.getMaxFreeBlockSize()) + " / " + formatNumberHTML(ESP.getFreeHeap()) + " Byte (" + ESP.getHeapFragmentation() + " % fragmentiert)</td></tr>\n"
          "<tr><td>Aktuelle / maximale Sketch-Gr&ouml;&szlig;e</td>"
-         "<td>" + formatNumberHTML(ESP.getSketchSize()) + " / " + formatNumberHTML(ESP.getFreeSketchSpace()) + " Byte</td></tr>\n"
+         "<td>" + formatNumberHTML(sketchSize) + " / " + formatNumberHTML(freeSketchSpace) + " Byte ("+ sketchPercentage +" % verwendet)</td></tr>\n"
          "<tr><td>Flash-Gr&ouml;&szlig;e / -Geschwindigkeit</td>"
          "<td>" + formatNumberHTML(ESP.getFlashChipSize()) + " Byte / " + ESP.getFlashChipSpeed() / 1000000 + " MHz</td></tr>\n"
+         "<tr><td>Prozessortakt</td>"
+         "<td>" + ESP.getCpuFreqMHz() + " MHz (" + formatNumberHTML(loopsPerSecond) + " loops/s)</td></tr>\n"
          "</table>\n"
-         
+
          "<p><a href=\"update\" title=\"Firmware aktualisieren\"><button>Firmware aktualisieren</button></a>"
          "&nbsp;<a href=\"reboot\" title=\"Ger&auml;t neu starten\"><button>Ger&auml;t neu starten</button></a></p>\n"
          
