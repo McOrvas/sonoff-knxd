@@ -150,7 +150,7 @@ void setupWebServer(){
          "<tr><td>Flash-Gr&ouml;&szlig;e / -Geschwindigkeit</td>"
          "<td>" + formatNumberHTML(ESP.getFlashChipSize()) + " Byte / " + ESP.getFlashChipSpeed() / 1000000 + " MHz</td></tr>\n"
          "<tr><td>Prozessortakt</td>"
-         "<td>" + ESP.getCpuFreqMHz() + " MHz (" + formatNumberHTML(loopsPerSecond) + " loops/s)</td></tr>\n"
+         "<td>" + ESP.getCpuFreqMHz() + " MHz (" + formatNumberHTML(getLoopsPerSecond()) + " loops/s)</td></tr>\n"
          "</table>\n"
 
          "<p><a href=\"update\" title=\"Firmware aktualisieren\"><button>Firmware aktualisieren</button></a>"

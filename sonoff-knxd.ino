@@ -49,7 +49,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2025-04-24",
+const char     *SOFTWARE_VERSION                      = "2026-03-28",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -121,7 +121,6 @@ uint32_t       knxdConnectionInitiatedCount     = 0,
                wifiCurrentConnectionAttempts    = 0,
                knxdDisconnections               = 0,
                loopCounter                      = 0,
-               loopsPerSecond                   = 0,
                
 // Variablen zur Zeitmessung
                currentMillis                    = 0,
@@ -385,22 +384,33 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
    }
 }
 
+uint32_t getLoopsPerSecond() {
+    uint32_t deltaMillis = currentMillis - loopCounterMillis;
+
+    if (deltaMillis == 0)
+      return 0;
+
+    uint32_t loopsPerSecond = (loopCounter * 1000UL) / deltaMillis;
+
+    loopCounter = 0;
+    loopCounterMillis = currentMillis;
+
+    return loopsPerSecond;
+}
 
 void loop() {
-   loopCounter++;
    currentMillisTemp = millis();
+   loopCounter++;
+
+   // loopCounter overflow
+   if (loopCounter == 0)
+      loopCounterMillis = currentMillisTemp;
    
    // Überlauf von millis()
    if (currentMillis > currentMillisTemp) {
       millisOverflows++;
    }
    currentMillis = currentMillisTemp;
-   
-   if (currentMillis - loopCounterMillis >= 1000){
-      loopsPerSecond = loopCounter;
-      loopCounter = 0;
-      loopCounterMillis = currentMillis;
-   }
 
    for (uint8_t ch=0; ch<CHANNELS; ch++) {
       // Check hardware buttons
