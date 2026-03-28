@@ -393,17 +393,17 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
 }
 
 uint32_t getLoopsPerSecond() {
-    uint32_t deltaMillis = currentMillis - loopCounterMillis;
+   uint32_t deltaMillis = currentMillis - loopCounterMillis;
 
-    if (deltaMillis == 0)
+   if (deltaMillis == 0)
       return 0;
 
-    uint32_t loopsPerSecond = (loopCounter * 1000UL) / deltaMillis;
+   uint32_t loopsPerSecond = ((uint64_t)loopCounter * 1000ULL) / deltaMillis;
 
-    loopCounter = 0;
-    loopCounterMillis = currentMillis;
+   loopCounter = 0;
+   loopCounterMillis = currentMillis;
 
-    return loopsPerSecond;
+   return loopsPerSecond;
 }
 
 void loop() {
