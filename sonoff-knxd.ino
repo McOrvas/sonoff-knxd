@@ -81,10 +81,18 @@ const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
 
 const boolean  GA_DATE_VALID = GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0,
                GA_TIME_VALID = GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0;
+
+enum class WifiState : uint8_t {
+    Disconnected,
+    Connecting,
+    Connected,
+    NetworkReady
+};
+
+WifiState wifiState = WifiState::Disconnected;
                
 uint8_t        messageLength = 0,
                messageResponse[32],
-               wifiConnected = 0,
                timeWeekday   = 0,
                timeHours     = 0,
                timeMinutes   = 0,
@@ -327,7 +335,7 @@ void setup() {
 
 
 void onWifiConnected(const WiFiEventStationModeConnected& event) {
-   wifiConnected = 2;
+   wifiState = WifiState::Connected;
    logConnectionEvent(LOG_WLAN_CONNECTED);
    Serial.print("WLAN-Verbindung hergestellt mit ");
    Serial.print(WiFi.BSSIDstr());
@@ -337,7 +345,7 @@ void onWifiConnected(const WiFiEventStationModeConnected& event) {
 
 
 void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
-   wifiConnected = 3;
+   wifiState = WifiState::NetworkReady;
    wifiCurrentConnectionAttempts = 0;
    logConnectionEvent(LOG_WLAN_DHCP_COMPLETED);
    Serial.print("IP-Adresse: ");
@@ -353,7 +361,7 @@ void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
 
 
 void onWifiDhcpTimeout() {
-   wifiConnected = 0;
+   wifiState = WifiState::Disconnected;
    wifiDisconnectedMillis = currentMillis;
    WiFi.disconnect();
    logConnectionEvent(LOG_WLAN_DHCP_TIMEOUT);
@@ -362,7 +370,7 @@ void onWifiDhcpTimeout() {
 
 
 void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
-   wifiConnected = 0;
+   wifiState = WifiState::Disconnected;
    wifiDisconnectedMillis = currentMillis;  
    wifiDisconnections++;
    resetKnxdConnection();
@@ -436,10 +444,10 @@ void loop() {
       }
    }
    
-   if (WiFi.status() != WL_CONNECTED || wifiConnected < 3) {              
+   if (WiFi.status() != WL_CONNECTED || wifiState != WifiState::NetworkReady) {              
       // Wifi connection not yet initialized or delay has expired
-      if (wifiConnected == 0 && (currentMillis - wifiDisconnectedMillis) >= WIFI_CONNECTION_LOST_DELAY_S * 1000) {
-         wifiConnected = 1;
+      if (wifiState == WifiState::Disconnected && (currentMillis - wifiDisconnectedMillis) >= WIFI_CONNECTION_LOST_DELAY_S * 1000) {
+         wifiState = WifiState::Connecting;
          wifiConnectionInitiatedMillis = currentMillis;
          wifiCurrentConnectionAttempts++;
          WiFi.begin(SSID, PASSWORD);
@@ -450,8 +458,8 @@ void loop() {
       }
       
       // The connection is already initialized
-      else if (wifiConnected > 0 && (currentMillis - wifiConnectionInitiatedMillis) >= WIFI_CONNECTION_TIMEOUT_S * 1000) {
-         wifiConnected = 0;
+      else if (wifiState != WifiState::Disconnected && (currentMillis - wifiConnectionInitiatedMillis) >= WIFI_CONNECTION_TIMEOUT_S * 1000) {
+         wifiState = WifiState::Disconnected;
          wifiDisconnectedMillis = currentMillis;
          WiFi.disconnect();
          logConnectionEvent(LOG_WLAN_CONNECTION_TIMEOUT);
@@ -460,7 +468,7 @@ void loop() {
    }
    
    // WLAN connected and IP address received
-   else if (wifiConnected == 3) {
+   else if (wifiState == WifiState::NetworkReady) {
       // KNX-Kommunikation
       knxLoop();
       
