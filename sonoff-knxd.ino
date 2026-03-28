@@ -1041,7 +1041,8 @@ void readGA(const uint8_t ga[]){
 
 
 uint32_t getUptimeSeconds(){
-   return (currentMillis / 1000) + (millisOverflows * (0xFFFFFFFF / 1000));
+   uint64_t uptimeMillis = (((uint64_t)millisOverflows) << 32) | currentMillis;
+   return (uint32_t)(uptimeMillis / 1000ULL);
 }
 
 
