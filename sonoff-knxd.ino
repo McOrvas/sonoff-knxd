@@ -31,16 +31,37 @@
 
 #include "Configuration.h"
 
-#if SCD30_ENABLE == true
-// https://www.arduino.cc/en/reference/wire
-#include <Wire.h>
-// https://github.com/sparkfun/SparkFun_SCD30_Arduino_Library
-#include <SparkFun_SCD30_Arduino_Library.h>
+/* 
+ * ***********************************************************************************************
+ * *** Optional components:                                                                    ***
+ * *** Sensirion SCD30 air quality sensor (https://sensirion.com/products/catalog/SCD30)       ***
+ * *** Seeed Studio Grove LCD             (https://wiki.seeedstudio.com/Grove-16x2_LCD_Series) *** 
+ * *** ntfy for push notifications        (https://ntfy.sh)                                    ***
+ * ***********************************************************************************************
+ */
 
-#if LCD_ENABLE == true
-// https://github.com/Seeed-Studio/Grove_LCD_RGB_Backlight
-#include <rgb_lcd.h>
+#if SCD30_ENABLE == true
+   #include <Wire.h>                           // https://www.arduino.cc/en/reference/wire
+   #include <SparkFun_SCD30_Arduino_Library.h> // https://github.com/sparkfun/SparkFun_SCD30_Arduino_Library
+   SCD30 airSensorSCD30;
+      #if LCD_ENABLE == true
+         #include <rgb_lcd.h>                  // https://github.com/Seeed-Studio/Grove_LCD_RGB_Backlight
+         rgb_lcd lcd;
+   #endif
 #endif
+
+#if NTFY_ENABLE == true
+   #include "NtfyClient.h"
+   NtfyClient ntfy(NTFY_IP, NTFY_PORT, NTFY_TOPIC);
+   bool ntfySendMessage(const char* message) {
+      return ntfy.enqueue(HOST_NAME, message);
+   }
+#else
+   bool ntfySendMessage(const char* message) {
+      Serial.print("ntfy ist deaktiviert, die Nachricht kann nicht gesendet werden: ");
+      Serial.println(message);
+      return false;
+   }
 #endif
 
 /* 
@@ -153,15 +174,6 @@ uint32_t       knxdConnectionInitiatedCount     = 0,
                airTemperatureLastSentMillis     = 0,
                airHumidityLastSentMillis        = 0;
 
-#if SCD30_ENABLE == true
-// Objekt for SDC30 environment sensor
-SCD30          airSensorSCD30;
-#if LCD_ENABLE == true
-// Object for LCD
-rgb_lcd        lcd;
-#endif
-#endif
-
 // Variables for air quality
 float          airTemperature         = 0.0,
                airTemperatureLastSent = 0.0,
@@ -206,15 +218,6 @@ struct logSwitchEvent {
    time_t        timestamp;
    boolean       timestampValid;
 } switchLogRingbuffer[LOG_SIZE];
-
-// Ntfy server
-#if NTFY_ENABLE == true
-#include "NtfyClient.h"
-NtfyClient ntfy(NTFY_IP, NTFY_PORT, NTFY_TOPIC);
-bool ntfySendMessage(const char* message) {return ntfy.enqueue(HOST_NAME, message);}
-#else
-bool ntfySendMessage(const char* message) {Serial.print("ntfy ist deaktiviert, die Nachricht kann nicht gesendet werden: "); Serial.println(message); return false;}
-#endif
 
 
 void setup() {
@@ -312,38 +315,38 @@ void setup() {
    dhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout(onWifiDhcpTimeout);
    
    #if SCD30_ENABLE == true
-   // Initialize I2C bus
-   Wire.begin();
-   Wire.setClock(100000L);             // 100 kHz SCD30 (standard value)
-   Wire.setClockStretchLimit(200000L); // CO2-SCD30 
+      // Initialize I2C bus
+      Wire.begin();
+      Wire.setClock(100000L);             // 100 kHz SCD30 (standard value)
+      Wire.setClockStretchLimit(200000L); // CO2-SCD30 
 
-   if (Wire.status() != I2C_OK) Serial.println("Something wrong with I2C");
-   
-   // Initialize SCD30 environment sensor
-   airSensorSCD30Connected = airSensorSCD30.begin();
-   if (!airSensorSCD30Connected) {
-      Serial.println("The SCD30 did not respond. Please check wiring."); 
-   }
+      if (Wire.status() != I2C_OK)
+         Serial.println("Something wrong with I2C");
+      
+      // Initialize SCD30 environment sensor
+      airSensorSCD30Connected = airSensorSCD30.begin();
+      if (!airSensorSCD30Connected) 
+         Serial.println("The SCD30 did not respond. Please check wiring."); 
 
-   // Sensirion no auto calibration
-   airSensorSCD30.setAutoSelfCalibration(false);
-   airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET_K);
-   airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION_M);
+      // Sensirion no auto calibration
+      airSensorSCD30.setAutoSelfCalibration(false);
+      airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET_K);
+      airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION_M);
 
-   // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
-   airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);
-   
-   #if LCD_ENABLE == true
-   // Initialize LCD with 16 columns and 2 rows
-   lcd.begin(16, 2);
-   lcd.setCursor(0,0);
-   lcd.print("Initialization");
-   #endif   
+      // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
+      airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);
+      
+      #if LCD_ENABLE == true
+         // Initialize LCD with 16 columns and 2 rows
+         lcd.begin(16, 2);
+         lcd.setCursor(0,0);
+         lcd.print("Initialization");
+      #endif   
    #endif
 
    #if NTFY_ENABLE == true
-   ntfy.begin();
-   ntfy.enqueue(HOST_NAME, "Modul erfolgreich gestartet.");   
+      ntfy.begin();
+      ntfy.enqueue(HOST_NAME, "Modul erfolgreich gestartet.");   
    #endif
 }
 
@@ -495,12 +498,12 @@ void loop() {
    webServer.handleClient();
    
    #if SCD30_ENABLE == true
-   if ((currentMillis - lastAirSensorPolledMillis) >= AIR_SENSOR_POLL_INTERVAL_S * 1000)
-      measureAir();
+      if ((currentMillis - lastAirSensorPolledMillis) >= AIR_SENSOR_POLL_INTERVAL_S * 1000)
+         measureAir();
    #endif
 
    #if NTFY_ENABLE == true
-   ntfy.loop();
+      ntfy.loop();
    #endif
 }
 
@@ -645,23 +648,23 @@ void knxLoop(){
                }
                
                #if SCD30_ENABLE == true
-               // Read GA CO2
-               if (GA_AIR_CO2[0] + GA_AIR_CO2[1] + GA_AIR_CO2[2] > 0
-                  && messageResponse[4] == (GA_AIR_CO2[0] << 3) + GA_AIR_CO2[1] && messageResponse[5] == GA_AIR_CO2[2]) {
-                  responseGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
-               }
-               
-               // Read GA Temperature
-               if (GA_AIR_TEMPERATURE[0] + GA_AIR_TEMPERATURE[1] + GA_AIR_TEMPERATURE[2] > 0
-                  && messageResponse[4] == (GA_AIR_TEMPERATURE[0] << 3) + GA_AIR_TEMPERATURE[1] && messageResponse[5] == GA_AIR_TEMPERATURE[2]) {
-                  responseGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
-               }
-               
-               // Read GA Humidity
-               if (GA_AIR_HUMIDITY[0] + GA_AIR_HUMIDITY[1] + GA_AIR_HUMIDITY[2] > 0
-                  && messageResponse[4] == (GA_AIR_HUMIDITY[0] << 3) + GA_AIR_HUMIDITY[1] && messageResponse[5] == GA_AIR_HUMIDITY[2]) {
-                  responseGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
-               }
+                  // Read GA CO2
+                  if (GA_AIR_CO2[0] + GA_AIR_CO2[1] + GA_AIR_CO2[2] > 0
+                     && messageResponse[4] == (GA_AIR_CO2[0] << 3) + GA_AIR_CO2[1] && messageResponse[5] == GA_AIR_CO2[2]) {
+                     responseGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
+                  }
+                  
+                  // Read GA Temperature
+                  if (GA_AIR_TEMPERATURE[0] + GA_AIR_TEMPERATURE[1] + GA_AIR_TEMPERATURE[2] > 0
+                     && messageResponse[4] == (GA_AIR_TEMPERATURE[0] << 3) + GA_AIR_TEMPERATURE[1] && messageResponse[5] == GA_AIR_TEMPERATURE[2]) {
+                     responseGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
+                  }
+                  
+                  // Read GA Humidity
+                  if (GA_AIR_HUMIDITY[0] + GA_AIR_HUMIDITY[1] + GA_AIR_HUMIDITY[2] > 0
+                     && messageResponse[4] == (GA_AIR_HUMIDITY[0] << 3) + GA_AIR_HUMIDITY[1] && messageResponse[5] == GA_AIR_HUMIDITY[2]) {
+                     responseGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
+                  }
                #endif
             }
             
@@ -845,89 +848,89 @@ void ledBlink(){
 
 
 #if SCD30_ENABLE == true
-void measureAir(){
-   if (airSensorSCD30.dataAvailable()){
-      airCO2         = airSensorSCD30.getCO2();
-      airTemperature = airSensorSCD30.getTemperature();
-      airHumidity    = airSensorSCD30.getHumidity();
-      lastAirMeasurementReceivedMillis = currentMillis;
-      airSensorSCD30Stuck = false;
-   }
-   // Check if the SC30 has not delivered new data for a long (10 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
-   // and reset values to 0, reset the I2C connection and restart the SCD30.
-   else if (!airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 10000){
-      Serial.println("The SCD30 no longer provides any data. Trying to reset the I2C connection and to reinitialize the sensor."); 
-      ntfySendMessage("Der SCD30 liefert keine Daten mehr. Die I2C-Verbindung wird nun zurückgesetzt und der Sensor anschließend neu initialisiert.");
+   void measureAir(){
+      if (airSensorSCD30.dataAvailable()){
+         airCO2         = airSensorSCD30.getCO2();
+         airTemperature = airSensorSCD30.getTemperature();
+         airHumidity    = airSensorSCD30.getHumidity();
+         lastAirMeasurementReceivedMillis = currentMillis;
+         airSensorSCD30Stuck = false;
+      }
+      // Check if the SC30 has not delivered new data for a long (10 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
+      // and reset values to 0, reset the I2C connection and restart the SCD30.
+      else if (!airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 10000){
+         Serial.println("The SCD30 no longer provides any data. Trying to reset the I2C connection and to reinitialize the sensor."); 
+         ntfySendMessage("Der SCD30 liefert keine Daten mehr. Die I2C-Verbindung wird nun zurückgesetzt und der Sensor anschließend neu initialisiert.");
 
-      airSensorSCD30Stuck = true;
-      airCO2              = 0;
-      airTemperature      = 0.0;
-      airHumidity         = 0.0;
+         airSensorSCD30Stuck = true;
+         airCO2              = 0;
+         airTemperature      = 0.0;
+         airHumidity         = 0.0;
 
-      // Restart I2C
-      Wire.begin(); 
-      Wire.setClock(100000L);
-      Wire.setClockStretchLimit(200000L);
+         // Restart I2C
+         Wire.begin(); 
+         Wire.setClock(100000L);
+         Wire.setClockStretchLimit(200000L);
+         
+         // Restart SCD30
+         airSensorSCD30Connected = airSensorSCD30.begin();
+
+         // Sensirion no auto calibration
+         airSensorSCD30.setAutoSelfCalibration(false);
+         airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET_K);
+         airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION_M);
+
+         // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
+         airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);      
+      }
+      // Check if the SC30 has not delivered new data for a long (20 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
+      // and restart the ESP, if the reset of I2C and SCD30 was not successful (condition above).
+      else if (airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 20000){
+         Serial.println("The SCD30 still no longer provides any data. Restarting the Module.");
+         ntfySendMessage("Der SCD30 liefert weiterhin keine Daten mehr. Das Modul wird in 10 s neu gestartet.");
+         delay(10000);
+         ESP.restart();
+      }
       
-      // Restart SCD30
-      airSensorSCD30Connected = airSensorSCD30.begin();
-
-      // Sensirion no auto calibration
-      airSensorSCD30.setAutoSelfCalibration(false);
-      airSensorSCD30.setTemperatureOffset(AIR_SENSOR_TEMPERATURE_OFFSET_K);
-      airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION_M);
-
-      // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
-      airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);      
-   }
-   // Check if the SC30 has not delivered new data for a long (20 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
-   // and restart the ESP, if the reset of I2C and SCD30 was not successful (condition above).
-   else if (airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 20000){
-      Serial.println("The SCD30 still no longer provides any data. Restarting the Module.");
-      ntfySendMessage("Der SCD30 liefert weiterhin keine Daten mehr. Das Modul wird in 10 s neu gestartet.");
-      delay(10000);
-      ESP.restart();
-   }
-   
-   #if LCD_ENABLE == true
-   static char lcdRow1[17],
-               lcdRow2[17];
-   snprintf(lcdRow1, 17, "%02d:%02d %6d ppm", hour(), minute(), airCO2);
-   snprintf(lcdRow2, 17, "%4.1f %cC  %5.1f %%", airTemperature, 223, airHumidity);
-   lcd.setCursor(0,0);
-   lcd.print(lcdRow1);      
-   lcd.setCursor(0,1);
-   lcd.print(lcdRow2);
-   
-   //Serial.println(lcdRow1);
-   //Serial.println(lcdRow2);
-   #endif
-   
-   // Send values to KNX
-   if (knxdClient.connected() && knxdConnectionConfirmed){
-      uint16_t airCO2Diff         = airCO2LastSent > airCO2 ? airCO2LastSent - airCO2 : airCO2 - airCO2LastSent;
-      float    airTemperatureDiff = airTemperatureLastSent > airTemperature ? airTemperatureLastSent - airTemperature : airTemperature - airTemperatureLastSent,
-               airHumidityDiff    = airHumidityLastSent > airHumidity ? airHumidityLastSent - airHumidity : airHumidity - airHumidityLastSent;
+      #if LCD_ENABLE == true
+         static char lcdRow1[17],
+                     lcdRow2[17];
+         snprintf(lcdRow1, 17, "%02d:%02d %6d ppm", hour(), minute(), airCO2);
+         snprintf(lcdRow2, 17, "%4.1f %cC  %5.1f %%", airTemperature, 223, airHumidity);
+         lcd.setCursor(0,0);
+         lcd.print(lcdRow1);      
+         lcd.setCursor(0,1);
+         lcd.print(lcdRow2);
+         
+         //Serial.println(lcdRow1);
+         //Serial.println(lcdRow2);
+      #endif
       
-      if ((currentMillis - airCO2LastSentMillis) >= KNX_SEND_INTERVAL_CO2_S * 1000 || airCO2Diff >= KNX_SEND_DIFFERENCE_VALUE_CO2){
-         writeGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
-         airCO2LastSent       = airCO2;
-         airCO2LastSentMillis = currentMillis;
+      // Send values to KNX
+      if (knxdClient.connected() && knxdConnectionConfirmed){
+         uint16_t airCO2Diff         = airCO2LastSent > airCO2 ? airCO2LastSent - airCO2 : airCO2 - airCO2LastSent;
+         float    airTemperatureDiff = airTemperatureLastSent > airTemperature ? airTemperatureLastSent - airTemperature : airTemperature - airTemperatureLastSent,
+                  airHumidityDiff    = airHumidityLastSent > airHumidity ? airHumidityLastSent - airHumidity : airHumidity - airHumidityLastSent;
+         
+         if ((currentMillis - airCO2LastSentMillis) >= KNX_SEND_INTERVAL_CO2_S * 1000 || airCO2Diff >= KNX_SEND_DIFFERENCE_VALUE_CO2){
+            writeGA(GA_AIR_CO2, encodeDpt9Int(airCO2));
+            airCO2LastSent       = airCO2;
+            airCO2LastSentMillis = currentMillis;
+         }
+         if ((currentMillis - airTemperatureLastSentMillis) >= KNX_SEND_INTERVAL_TEMPERATURE_S * 1000 || airTemperatureDiff >= KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE){
+            writeGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
+            airTemperatureLastSent       = airTemperature;
+            airTemperatureLastSentMillis = currentMillis;
+         }
+         if ((currentMillis - airHumidityLastSentMillis) >= KNX_SEND_INTERVAL_HUMIDITY_S * 1000 || airHumidityDiff >= KNX_SEND_DIFFERENCE_VALUE_HUMIDITY){         
+            writeGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
+            airHumidityLastSent       = airHumidity;
+            airHumidityLastSentMillis = currentMillis;
+         }
       }
-      if ((currentMillis - airTemperatureLastSentMillis) >= KNX_SEND_INTERVAL_TEMPERATURE_S * 1000 || airTemperatureDiff >= KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE){
-         writeGA(GA_AIR_TEMPERATURE, encodeDpt9Float(airTemperature));
-         airTemperatureLastSent       = airTemperature;
-         airTemperatureLastSentMillis = currentMillis;
-      }
-      if ((currentMillis - airHumidityLastSentMillis) >= KNX_SEND_INTERVAL_HUMIDITY_S * 1000 || airHumidityDiff >= KNX_SEND_DIFFERENCE_VALUE_HUMIDITY){         
-         writeGA(GA_AIR_HUMIDITY, encodeDpt9Float(airHumidity));
-         airHumidityLastSent       = airHumidity;
-         airHumidityLastSentMillis = currentMillis;
-      }
-   }
 
-   lastAirSensorPolledMillis = currentMillis;
-}
+      lastAirSensorPolledMillis = currentMillis;
+   }
 #endif
 
 
