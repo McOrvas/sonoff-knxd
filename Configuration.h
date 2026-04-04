@@ -24,7 +24,7 @@ const uint32_t WIFI_CONNECTION_TIMEOUT_S    = 30,
                
 // EIBD/KNXD
 const char*    KNXD_IP   = "10.9.8.7";
-const uint32_t KNXD_PORT = 6720;
+const uint16_t KNXD_PORT = 6720;
 
 // Number of active switching channels. 1 for S20 and Basic, 1-4 for 4CH (Pro)
 const uint8_t  CHANNELS = 1;
@@ -213,3 +213,14 @@ const uint16_t KNX_SEND_INTERVAL_CO2_S               = 900,
                KNX_SEND_DIFFERENCE_VALUE_CO2         = 50;
 const float    KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE = 0.2,
                KNX_SEND_DIFFERENCE_VALUE_HUMIDITY    = 1.0;
+
+/* 
+ * ************
+ * *** Ntfy *** 
+ * ************
+ */
+
+#define        NTFY_ENABLE  false
+const char*    NTFY_IP    = "10.9.8.7";
+const uint16_t NTFY_PORT  = 80;
+const char*    NTFY_TOPIC = "sonoff-knxd";

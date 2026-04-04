@@ -49,7 +49,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2026-03-28",
+const char     *SOFTWARE_VERSION                      = "2026-04-04",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -207,6 +207,15 @@ struct logSwitchEvent {
    boolean       timestampValid;
 } switchLogRingbuffer[LOG_SIZE];
 
+// Ntfy server
+#if NTFY_ENABLE == true
+#include "NtfyClient.h"
+NtfyClient ntfy(NTFY_IP, NTFY_PORT, NTFY_TOPIC);
+bool ntfySendMessage(const char* message) {return ntfy.enqueue(HOST_NAME, message);}
+#else
+bool ntfySendMessage(const char* message) {Serial.print("ntfy ist deaktiviert, die Nachricht kann nicht gesendet werden: "); Serial.println(message); return false;}
+#endif
+
 
 void setup() {
    Serial.begin(115200);
@@ -330,6 +339,11 @@ void setup() {
    lcd.setCursor(0,0);
    lcd.print("Initialization");
    #endif   
+   #endif
+
+   #if NTFY_ENABLE == true
+   ntfy.begin();
+   ntfy.enqueue(HOST_NAME, "Modul erfolgreich gestartet.");   
    #endif
 }
 
@@ -483,6 +497,10 @@ void loop() {
    #if SCD30_ENABLE == true
    if ((currentMillis - lastAirSensorPolledMillis) >= AIR_SENSOR_POLL_INTERVAL_S * 1000)
       measureAir();
+   #endif
+
+   #if NTFY_ENABLE == true
+   ntfy.loop();
    #endif
 }
 
@@ -839,6 +857,7 @@ void measureAir(){
    // and reset values to 0, reset the I2C connection and restart the SCD30.
    else if (!airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 10000){
       Serial.println("The SCD30 no longer provides any data. Trying to reset the I2C connection and to reinitialize the sensor."); 
+      ntfySendMessage("Der SCD30 liefert keine Daten mehr. Die I2C-Verbindung wird nun zurückgesetzt und der Sensor anschließend neu initialisiert.");
 
       airSensorSCD30Stuck = true;
       airCO2              = 0;
@@ -864,8 +883,9 @@ void measureAir(){
    // Check if the SC30 has not delivered new data for a long (20 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
    // and restart the ESP, if the reset of I2C and SCD30 was not successful (condition above).
    else if (airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 20000){
-      Serial.println("The SCD30 still no longer provides any data. Restarting the ESP."); 
-      delay(1000);
+      Serial.println("The SCD30 still no longer provides any data. Restarting the Module.");
+      ntfySendMessage("Der SCD30 liefert weiterhin keine Daten mehr. Das Modul wird in 10 s neu gestartet.");
+      delay(10000);
       ESP.restart();
    }
    

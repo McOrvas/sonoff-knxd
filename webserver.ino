@@ -168,6 +168,9 @@ void setupWebServer(){
          "<tr><td>Kanal</td><td>"      + String(WiFi.channel()) + "</td></tr>\n"
          "<tr><td>RSSI</td><td>"       + String(WiFi.RSSI()) + " dBm</td></tr>\n"
          "<tr><td>knxd</td><td>"       + String(KNXD_IP) + "</td></tr>\n"
+         #if NTFY_ENABLE == true
+         "<tr><td>ntfy</td><td>"       + NTFY_IP + ":" + NTFY_PORT + "/" + NTFY_TOPIC + "</td></tr>\n"
+         #endif
          "</table>\n"
          
          "<H2>KNX-Konfiguration</H2>\n"
