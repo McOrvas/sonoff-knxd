@@ -171,7 +171,7 @@ uint16_t       airCO2                 = 0,
                airCO2LastSent         = 0;
 
 // WLAN-Client
-WiFiClient              client;
+WiFiClient              knxdClient;
 WiFiEventHandler        connectHandler,
                         disconnectHandler,
                         gotIpHandler,
@@ -515,7 +515,7 @@ void knxLoop(){
    }
    
    // Die Verbindung zum knxd wurde unterbrochen
-   else if (!client.connected()){
+   else if (!knxdClient.connected()){
       Serial.println("Die Verbindung zum knxd wurde getrennt.");      
       logConnectionEvent(LOG_KNXD_DISCONNECTED);
       knxdDisconnections++;
@@ -545,15 +545,15 @@ void knxLoop(){
    // Die Verbindung ist etabliert
    else {
       // Die Länge einer neuen Nachricht lesen
-      if (messageLength == 0 && client.available() >= 2){
-         messageLength = (((int) client.read()) << 8) + client.read();
+      if (messageLength == 0 && knxdClient.available() >= 2){
+         messageLength = (((int) knxdClient.read()) << 8) + knxdClient.read();
          lastTelegramHeaderReceivedMillis = currentMillis;
          incompleteTelegramTimeoutEnabled = true;
       }
       
       // Die Nutzdaten einer Nachricht lesen
-      if (messageLength > 0 && client.available() >= messageLength){
-         client.read(messageResponse, messageLength);
+      if (messageLength > 0 && knxdClient.available() >= messageLength){
+         knxdClient.read(messageResponse, messageLength);
          
          // Prüfen, ob der initiale Verbindungsaufbau korrekt bestätigt wurde      
          if (!knxdConnectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
@@ -739,17 +739,17 @@ boolean connectToKnxd(){
    Serial.print("Verbinde mit knxd auf ");
    Serial.println(KNXD_IP);
    
-   if (client.connect(KNXD_IP, KNXD_PORT)) {
-      client.setNoDelay(true);
-      client.keepAlive(KA_IDLE_S, KA_INTERVAL_S, KA_RETRY_COUNT);      
-      client.write(KNXD_GROUP_CONNECTION_REQUEST, sizeof(KNXD_GROUP_CONNECTION_REQUEST));
+   if (knxdClient.connect(KNXD_IP, KNXD_PORT)) {
+      knxdClient.setNoDelay(true);
+      knxdClient.keepAlive(KA_IDLE_S, KA_INTERVAL_S, KA_RETRY_COUNT);      
+      knxdClient.write(KNXD_GROUP_CONNECTION_REQUEST, sizeof(KNXD_GROUP_CONNECTION_REQUEST));
       
       knxdConnectionInitiated       = true;
       knxdConnectionInitiatedMillis = currentMillis;
       knxdConnectionInitiatedCount++;      
       logConnectionEvent(LOG_KNXD_CONNECTION_INITIATED);
       
-      return client.connected();
+      return knxdClient.connected();
    }
    else{
       Serial.println("Verbindung fehlgeschlagen!");
@@ -761,7 +761,7 @@ boolean connectToKnxd(){
 
 
 void resetKnxdConnection(){
-   client.stop();
+   knxdClient.stop();
    knxdConnectionInitiated          = false;
    knxdConnectionConfirmed          = false;
    missingTelegramTimeoutEnabled    = false;
@@ -1021,41 +1021,41 @@ void lockRelay(const uint8_t ch, const boolean lock, const char *source, const u
 
 
 void writeGA(const uint8_t ga[], const boolean status){
-   if (client.connected()){
+   if (knxdClient.connected()){
       const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, (uint8_t)(0x80 | status)};
-      client.write(groupValueWrite, sizeof(groupValueWrite));
+      knxdClient.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
 
 
 void writeGA(const uint8_t ga[], const uint16_t data){
-   if (client.connected()){
+   if (knxdClient.connected()){
       const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, 0x80, (uint8_t)((data >> 8) & 0xFF), (uint8_t)(data & 0xFF)};
-      client.write(groupValueWrite, sizeof(groupValueWrite));
+      knxdClient.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
 
 
 void responseGA(const uint8_t ga[], const boolean status){
-   if (client.connected()){
+   if (knxdClient.connected()){
       const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, (uint8_t)(0x40 | status)};
-      client.write(groupValueResponse, sizeof(groupValueResponse));
+      knxdClient.write(groupValueResponse, sizeof(groupValueResponse));
    }   
 }
 
 
 void responseGA(const uint8_t ga[], const uint16_t data){
-   if (client.connected()){
+   if (knxdClient.connected()){
       const uint8_t groupValueWrite[] = {0x00, 0x08, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, 0x40, (uint8_t)((data >> 8) & 0xFF), (uint8_t)(data & 0xFF)};
-      client.write(groupValueWrite, sizeof(groupValueWrite));
+      knxdClient.write(groupValueWrite, sizeof(groupValueWrite));
    }   
 }
 
 
 void readGA(const uint8_t ga[]){
-   if (client.connected()){
+   if (knxdClient.connected()){
       const uint8_t groupValueRequest[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, 0x00};
-      client.write(groupValueRequest, sizeof(groupValueRequest));
+      knxdClient.write(groupValueRequest, sizeof(groupValueRequest));
    }   
 }
 
