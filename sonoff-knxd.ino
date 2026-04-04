@@ -904,7 +904,7 @@ void measureAir(){
    #endif
    
    // Send values to KNX
-   if (client.connected() && knxdConnectionConfirmed){
+   if (knxdClient.connected() && knxdConnectionConfirmed){
       uint16_t airCO2Diff         = airCO2LastSent > airCO2 ? airCO2LastSent - airCO2 : airCO2 - airCO2LastSent;
       float    airTemperatureDiff = airTemperatureLastSent > airTemperature ? airTemperatureLastSent - airTemperature : airTemperature - airTemperatureLastSent,
                airHumidityDiff    = airHumidityLastSent > airHumidity ? airHumidityLastSent - airHumidity : airHumidity - airHumidityLastSent;
