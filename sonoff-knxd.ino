@@ -70,7 +70,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2026-04-04",
+const char     *SOFTWARE_VERSION                      = "2026-04-10",
 
                *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
                *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
@@ -100,7 +100,7 @@ const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
                KNXD_GROUP_CONNECTION_REQUEST[]  = {0x00, 0x05, EIB_OPEN_GROUPCON >> 8, EIB_OPEN_GROUPCON & 0xFF, 0x00, 0x00, 0x00};
 
-const boolean  GA_DATE_VALID = GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0,
+const bool     GA_DATE_VALID = GA_DATE[0] + GA_DATE[1] + GA_DATE[2] > 0,
                GA_TIME_VALID = GA_TIME[0] + GA_TIME[1] + GA_TIME[2] > 0;
 
 enum class WifiState : uint8_t {
@@ -123,7 +123,7 @@ uint8_t        messageLength = 0,
 uint16_t       dateYear      = 0;
 time_t         bootTime      = 0;
 
-boolean        knxdConnectionInitiated          = false,
+bool           knxdConnectionInitiated          = false,
                knxdConnectionConfirmed          = false,
                lockActive[]                     = {false, false, false, false},
                buttonLastState[]                = {true, true, true, true},
@@ -182,8 +182,12 @@ float          airTemperature         = 0.0,
 uint16_t       airCO2                 = 0,
                airCO2LastSent         = 0;
 
+// Variables for ntfy
+bool           ntfyInitialMessageSent = false;
+
 // WLAN-Client
 WiFiClient              knxdClient;
+IPAddress               lastIPAddress(0, 0, 0, 0);
 WiFiEventHandler        connectHandler,
                         disconnectHandler,
                         gotIpHandler,
@@ -203,7 +207,7 @@ struct logConnectionEvent {
    uint32_t    entry,
                uptimeSeconds;
    time_t      timestamp;
-   boolean     timestampValid;
+   bool        timestampValid;
    int32_t     wlanChannel;
    uint8_t     wlanBssid[6];
 } connectionLogRingbuffer[LOG_SIZE];
@@ -216,7 +220,7 @@ struct logSwitchEvent {
    uint32_t      entry,
                  uptimeSeconds;
    time_t        timestamp;
-   boolean       timestampValid;
+   bool          timestampValid;
 } switchLogRingbuffer[LOG_SIZE];
 
 
@@ -346,7 +350,6 @@ void setup() {
 
    #if NTFY_ENABLE == true
       ntfy.begin();
-      ntfy.enqueue(HOST_NAME, "Modul erfolgreich gestartet.");   
    #endif
 }
 
@@ -354,8 +357,13 @@ void setup() {
 void onWifiConnected(const WiFiEventStationModeConnected& event) {
    wifiState = WifiState::Connected;
    logConnectionEvent(LOG_WLAN_CONNECTED);
+   
+   uint8_t *bssid = WiFi.BSSID();
+   char buffer[18];
+   snprintf(buffer, sizeof(buffer), "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+
    Serial.print("WLAN-Verbindung hergestellt mit ");
-   Serial.print(WiFi.BSSIDstr());
+   Serial.print(buffer);
    Serial.print(" auf Kanal ");
    Serial.println(WiFi.channel());
 }
@@ -364,9 +372,26 @@ void onWifiConnected(const WiFiEventStationModeConnected& event) {
 void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
    wifiState = WifiState::NetworkReady;
    wifiCurrentConnectionAttempts = 0;
+   
+   IPAddress ip = WiFi.localIP();
    logConnectionEvent(LOG_WLAN_DHCP_COMPLETED);
    Serial.print("IP-Adresse: ");
-   Serial.println(WiFi.localIP());
+   Serial.println(ip);
+   
+   if (!ntfyInitialMessageSent){
+      ntfyInitialMessageSent = true;
+      lastIPAddress = ip;
+      char buffer[64];
+      snprintf(buffer, sizeof(buffer), "Modul gestartet, IP-Adresse: %u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+      ntfySendMessage(buffer);
+   }
+   else if (ip != lastIPAddress){
+      lastIPAddress = ip;
+      char buffer[64];
+      snprintf(buffer, sizeof(buffer), "Neue IP-Adresse: %u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+      ntfySendMessage(buffer);
+   }
+   
 
    // Disable the Access Point again
    if (WiFi.getMode() == WIFI_AP_STA || WiFi.getMode() == WIFI_AP) {
@@ -571,7 +596,7 @@ void knxLoop(){
             missingTelegramTimeoutEnabled = true;
             
             // Die Status-GA senden, sobald die Verbindung steht. Dadurch wird sie beim ersten Start nach einem Spannungsausfall gesendet.
-            for (uint8_t ch= 0; ch<CHANNELS; ch++)
+            for (uint8_t ch = 0; ch < CHANNELS; ch++)
                writeGA(GA_STATUS[ch], relayStatus[ch]);
             
             if (REQUEST_DATE_AND_TIME_INITIALLY){
@@ -736,7 +761,7 @@ void knxLoop(){
 }
 
 
-boolean connectToKnxd(){
+bool connectToKnxd(){
    resetKnxdConnection();
    
    Serial.print("Verbinde mit knxd auf ");
@@ -854,13 +879,17 @@ void ledBlink(){
          airTemperature = airSensorSCD30.getTemperature();
          airHumidity    = airSensorSCD30.getHumidity();
          lastAirMeasurementReceivedMillis = currentMillis;
-         airSensorSCD30Stuck = false;
+
+         if (airSensorSCD30Stuck){
+            airSensorSCD30Stuck = false;
+            ntfySendMessage("Neuinitialisierung erfolgreich, der SCD30 liefert wieder Daten.");
+         }         
       }
       // Check if the SC30 has not delivered new data for a long (10 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
       // and reset values to 0, reset the I2C connection and restart the SCD30.
       else if (!airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 10000){
-         Serial.println("The SCD30 no longer provides any data. Trying to reset the I2C connection and to reinitialize the sensor."); 
-         ntfySendMessage("Der SCD30 liefert keine Daten mehr. Die I2C-Verbindung wird nun zurückgesetzt und der Sensor anschließend neu initialisiert.");
+         Serial.println("The SCD30 no longer provides any data. Trying to reset the I2C connection and to reinitialize the sensor. If inactivity continues, the module will be restarted."); 
+         ntfySendMessage("Der SCD30 liefert keine Daten mehr. Die I2C-Verbindung wird nun zurückgesetzt und der Sensor anschließend neu initialisiert. Bei fortbestehender Inaktivität wird das Modul neu gestartet.");
 
          airSensorSCD30Stuck = true;
          airCO2              = 0;
@@ -881,20 +910,19 @@ void ledBlink(){
          airSensorSCD30.setAltitudeCompensation(AIR_SENSOR_ALTITUDE_COMPENSATION_M);
 
          // Measure air every AIR_SENSOR_MEASUREMENT_INTERVAL_S seconds
-         airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);      
+         airSensorSCD30.setMeasurementInterval(AIR_SENSOR_MEASUREMENT_INTERVAL_S);
       }
       // Check if the SC30 has not delivered new data for a long (20 * AIR_SENSOR_MEASUREMENT_INTERVAL_S) time
       // and restart the ESP, if the reset of I2C and SCD30 was not successful (condition above).
       else if (airSensorSCD30Stuck && currentMillis - lastAirMeasurementReceivedMillis >= AIR_SENSOR_MEASUREMENT_INTERVAL_S * 20000){
          Serial.println("The SCD30 still no longer provides any data. Restarting the Module.");
-         ntfySendMessage("Der SCD30 liefert weiterhin keine Daten mehr. Das Modul wird in 10 s neu gestartet.");
-         delay(10000);
+         delay(100);
          ESP.restart();
       }
       
       #if LCD_ENABLE == true
-         static char lcdRow1[17],
-                     lcdRow2[17];
+         char lcdRow1[17],
+              lcdRow2[17];
          snprintf(lcdRow1, 17, "%02d:%02d %6d ppm", hour(), minute(), airCO2);
          snprintf(lcdRow2, 17, "%4.1f %cC  %5.1f %%", airTemperature, 223, airHumidity);
          lcd.setCursor(0,0);
@@ -934,7 +962,7 @@ void ledBlink(){
 #endif
 
 
-void switchRelay(const uint8_t ch, const boolean on, const boolean overrideLock, const char *source, const uint8_t *ga){
+void switchRelay(const uint8_t ch, const bool on, const bool overrideLock, const char *source, const uint8_t *ga){
    if (ch >= CHANNELS){
       Serial.print("Ungültiger Kanal: ");
       Serial.println(ch + 1);
@@ -981,7 +1009,7 @@ void switchRelay(const uint8_t ch, const boolean on, const boolean overrideLock,
 }
 
 
-void lockRelay(const uint8_t ch, const boolean lock, const char *source, const uint8_t *ga){
+void lockRelay(const uint8_t ch, const bool lock, const char *source, const uint8_t *ga){
    if (ch >= CHANNELS){
       Serial.print("Ungültiger Kanal: ");
       Serial.println(ch + 1);
@@ -1023,7 +1051,7 @@ void lockRelay(const uint8_t ch, const boolean lock, const char *source, const u
 }
 
 
-void writeGA(const uint8_t ga[], const boolean status){
+void writeGA(const uint8_t ga[], const bool status){
    if (knxdClient.connected()){
       const uint8_t groupValueWrite[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, (uint8_t)(0x80 | status)};
       knxdClient.write(groupValueWrite, sizeof(groupValueWrite));
@@ -1039,7 +1067,7 @@ void writeGA(const uint8_t ga[], const uint16_t data){
 }
 
 
-void responseGA(const uint8_t ga[], const boolean status){
+void responseGA(const uint8_t ga[], const bool status){
    if (knxdClient.connected()){
       const uint8_t groupValueResponse[] = {0x00, 0x06, EIB_GROUP_PACKET >> 8, EIB_GROUP_PACKET & 0xFF, (uint8_t)((ga[0] << 3) + ga[1]), ga[2], 0x00, (uint8_t)(0x40 | status)};
       knxdClient.write(groupValueResponse, sizeof(groupValueResponse));
@@ -1069,53 +1097,39 @@ uint32_t getUptimeSeconds(){
 }
 
 
-char* getUptimeString(uint32_t totalSeconds){
+void getUptimeString(char* buffer, size_t size, uint32_t totalSeconds){
    uint32_t seconds       = totalSeconds % 60,
             minutes       = (totalSeconds / 60) % 60,
             hours         = (totalSeconds / (60 * 60)) % 24,
             days          = totalSeconds / (60 * 60 * 24);
-      
-   static char timeString[22];   
    
-        if (days == 0) snprintf(timeString,  9,          "%02d:%02d:%02d", hours, minutes, seconds);
-   else if (days == 1) snprintf(timeString, 22,   "1 Tag, %02d:%02d:%02d", hours, minutes, seconds);    
-   else                snprintf(timeString, 22, "%d Tage, %02d:%02d:%02d", days, hours, minutes, seconds);
-   
-   return timeString;
+        if (days == 0) snprintf(buffer, size,          "%02d:%02d:%02d", hours, minutes, seconds);
+   else if (days == 1) snprintf(buffer, size,   "1 Tag, %02d:%02d:%02d", hours, minutes, seconds);    
+   else                snprintf(buffer, size, "%d Tage, %02d:%02d:%02d", days, hours, minutes, seconds); // 21 + 1 characters
 }
 
 
-char* getTimeString(time_t timestamp){
-   static char timeString[9];   
-   snprintf(timeString, 9, "%02d:%02d:%02d", hour(timestamp), minute(timestamp), second(timestamp));
-   
-   return timeString;   
+void getTimeString(char* buffer, size_t size, time_t timestamp){
+   snprintf(buffer, size, "%02d:%02d:%02d", hour(timestamp), minute(timestamp), second(timestamp)); // 8 + 1 characters
 }
 
 
-char* getDateString(time_t timestamp){   
-   static char dateString[11];
-   snprintf(dateString, 11, "%04d-%02d-%02d", year(timestamp), month(timestamp), day(timestamp));
-   
-   return dateString;
+void getDateString(char* buffer, size_t size, time_t timestamp){   
+   snprintf(buffer, size, "%04d-%02d-%02d", year(timestamp), month(timestamp), day(timestamp)); // 10 + 1 characers
 }
 
 
-char* getWeekdayString(time_t timestamp){   
-   static char weekdayString[11];
-   
+void getWeekdayString(char* buffer, size_t size, time_t timestamp){
    switch (weekday(timestamp)){
-      case 1  : strcpy(weekdayString, "Sonntag");    break;
-      case 2  : strcpy(weekdayString, "Montag");     break;
-      case 3  : strcpy(weekdayString, "Dienstag");   break;
-      case 4  : strcpy(weekdayString, "Mittwoch");   break;
-      case 5  : strcpy(weekdayString, "Donnerstag"); break;
-      case 6  : strcpy(weekdayString, "Freitag");    break;
-      case 7  : strcpy(weekdayString, "Samstag");    break;
-      default : strcpy(weekdayString, "Invalid");    break;
+      case 1  : strncpy(buffer, "Sonntag",    size); break;
+      case 2  : strncpy(buffer, "Montag",     size); break;
+      case 3  : strncpy(buffer, "Dienstag",   size); break;
+      case 4  : strncpy(buffer, "Mittwoch",   size); break;
+      case 5  : strncpy(buffer, "Donnerstag", size); break; // 10 + 1 characters
+      case 6  : strncpy(buffer, "Freitag",    size); break;
+      case 7  : strncpy(buffer, "Samstag",    size); break;
+      default : strncpy(buffer, "Invalid",    size); break;
    }
-
-   return weekdayString;
 }
 
 
@@ -1159,35 +1173,6 @@ float decodeDpt9(uint16_t data) {
    float value = (mantissa / 100.0) * (1 << exponent);
    
    return value;   
-}
-
-
-String formatNumberHTML(uint32_t number) {
-   char buffer[32];
-
-   if (number >= 1000000000) {
-      uint32_t a = number / 1000000000;
-      uint32_t b = (number / 1000000) % 1000;
-      uint32_t c = (number / 1000) % 1000;
-      uint32_t d = number % 1000;
-      snprintf(buffer, sizeof(buffer), "%u&#8239;%03u&#8239;%03u&#8239;%03u", a, b, c, d);
-   } 
-   else if (number >= 1000000) {
-      uint32_t a = number / 1000000;
-      uint32_t b = (number / 1000) % 1000;
-      uint32_t c = number % 1000;
-      snprintf(buffer, sizeof(buffer), "%u&#8239;%03u&#8239;%03u", a, b, c);
-   }
-   else if (number >= 1000) {
-      uint32_t a = number / 1000;
-      uint32_t b = number % 1000;
-      snprintf(buffer, sizeof(buffer), "%u&#8239;%03u", a, b);
-   }
-   else {
-      snprintf(buffer, sizeof(buffer), "%u", number);
-   }
-
-   return String(buffer);
 }
 
 

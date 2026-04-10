@@ -214,12 +214,14 @@ const uint16_t KNX_SEND_INTERVAL_CO2_S               = 900,
 const float    KNX_SEND_DIFFERENCE_VALUE_TEMPERATURE = 0.2,
                KNX_SEND_DIFFERENCE_VALUE_HUMIDITY    = 1.0;
 
+
 /* 
  * ************
  * *** Ntfy *** 
  * ************
  */
 
+// Set to true to activate ntfy. Without ntfy integration, this whole section can be deleted from the configuration.
 #define        NTFY_ENABLE  false
 const char*    NTFY_IP    = "10.9.8.7";
 const uint16_t NTFY_PORT  = 80;
