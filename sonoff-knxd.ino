@@ -16,13 +16,6 @@
  * Flash Size: 4MB (FS:2MB OTA:~1019KB) [Notwendig für Updates über die Weboberfläche]
  */
 
-#include <TimeLib.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266HTTPUpdateServer.h>
-// https://github.com/knxd/knxd/blob/master/src/include/eibtypes.h
-#include "eibtypes.h"
-
 /*
  * *******************************
  * *** Laden der Konfiguration ***
@@ -30,6 +23,18 @@
  */
 
 #include "Configuration.h"
+
+/*
+ * *************************
+ * *** Include libraries ***
+ * *************************
+ */
+
+#include <TimeLib.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266HTTPUpdateServer.h>
+#include "eibtypes.h" // https://github.com/knxd/knxd/blob/master/src/include/eibtypes.h
 
 /* 
  * ***********************************************************************************************
@@ -53,15 +58,6 @@
 #if NTFY_ENABLE == true
    #include "NtfyClient.h"
    NtfyClient ntfy(NTFY_IP, NTFY_PORT, NTFY_TOPIC);
-   bool ntfySendMessage(const char* message) {
-      return ntfy.enqueue(HOST_NAME, message);
-   }
-#else
-   bool ntfySendMessage(const char* message) {
-      Serial.print("ntfy ist deaktiviert, die Nachricht kann nicht gesendet werden: ");
-      Serial.println(message);
-      return false;
-   }
 #endif
 
 /* 
@@ -70,31 +66,7 @@
  * *************************
  */
 
-const char     *SOFTWARE_VERSION                      = "2026-04-10",
-
-               *LOG_WLAN_CONNECTION_INITIATED         = "WLAN-Verbindung initiiert",
-               *LOG_WLAN_CONNECTED                    = "WLAN-Verbindung hergestellt",
-               *LOG_WLAN_DHCP_COMPLETED               = "IP-Adresse per DHCP erhalten",
-               *LOG_WLAN_DISCONNECTED                 = "WLAN-Verbindung getrennt",
-               *LOG_WLAN_CONNECTION_TIMEOUT           = "Zeitüberschreitungen beim Aufbau der WLAN-Verbindung",
-               *LOG_WLAN_DHCP_TIMEOUT                 = "DHCP-Zeitüberschreitungen",
-               *LOG_KNXD_CONNECTION_INITIATED         = "Initiale Verbindung zum knxd hergestellt",
-               *LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT = "Zeitüberschreitungen bei der Verbindungsbestätigung durch den knxd",
-               *LOG_KNXD_CONNECTION_CONFIRMED         = "Verbindung vom knxd bestätigt",
-               *LOG_KNXD_DISCONNECTED                 = "Verbindung zum knxd getrennt",
-               *LOG_MISSING_TELEGRAM_TIMEOUT          = "Verbindungsabbruch wegen Zeitüberschreitung zwischen zwei Telegrammen",
-               *LOG_INCOMPLETE_TELEGRAM_TIMEOUT       = "Verbindungsabbruch wegen unvollständig empfangenem Telegramm",
-               
-               *SWITCH_LOG_OFF                        = "Ausgeschaltet",
-               *SWITCH_LOG_ON                         = "Eingeschaltet",
-               *SWITCH_LOG_LOCK                       = "Gesperrt",
-               *SWITCH_LOG_UNLOCK                     = "Entsperrt",
-               *SWITCH_LOG_BUTTON                     = "Taster",
-               *SWITCH_LOG_ON_BY_LOCK                 = "Sperrautomatik",
-               *SWITCH_LOG_OFF_BY_UNLOCK              = "Entsperrautomatik",
-               *SWITCH_LOG_AUTO_OFF_TIMER             = "Zeitschalter",
-               *SWITCH_LOG_AUTO_UNLOCK_TIMER          = "Zeitschalter",
-               *SWITCH_LOG_WEBSERVER                  = "Webserver";
+static const char SOFTWARE_VERSION[]            = "2026-04-13";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
@@ -197,30 +169,70 @@ WiFiEventHandler        connectHandler,
 ESP8266WebServer        webServer(80);
 ESP8266HTTPUpdateServer httpUpdateServer;
 
-// Variablen zur Ereignisspeicherung
-const uint32_t  LOG_SIZE = 100;
-uint32_t        connectionLogEntries = 0;
-uint32_t        switchLogEntries = 0;
+/*
+ * *************************************
+ * *** Ring buffer for event logging ***
+ * *************************************
+ */
 
-struct logConnectionEvent {
-   const char  *message;
-   uint32_t    entry,
-               uptimeSeconds;
-   time_t      timestamp;
-   bool        timestampValid;
-   int32_t     wlanChannel;
-   uint8_t     wlanBssid[6];
+const uint32_t  LOG_SIZE             = 100;
+uint32_t        connectionLogEntries = 0;
+uint32_t        switchLogEntries     = 0;
+
+enum class ConnectionLogEvent : uint8_t {
+   WLAN_CONNECTION_INITIATED,
+   WLAN_CONNECTED,
+   WLAN_DHCP_COMPLETED,
+   WLAN_DISCONNECTED,
+   WLAN_CONNECTION_TIMEOUT,
+   WLAN_DHCP_TIMEOUT,
+   KNXD_CONNECTION_INITIATED,
+   KNXD_CONNECTION_HANDSHAKE_TIMEOUT,
+   KNXD_CONNECTION_CONFIRMED,
+   KNXD_DISCONNECTED,
+   MISSING_TELEGRAM_TIMEOUT,
+   INCOMPLETE_TELEGRAM_TIMEOUT   
+};
+
+struct ConnectionLogEntry {   
+   uint32_t           entry,
+                      uptimeSeconds;
+   time_t             timestamp;   
+   int32_t            wlanChannel;
+   uint8_t            wlanBssid[6],
+                      wiFiDisconnectReason;
+   ConnectionLogEvent event;
+   bool               timestampValid;
 } connectionLogRingbuffer[LOG_SIZE];
 
-struct logSwitchEvent {
-   const uint8_t *ga;
-   const char    *type,
-                 *message;
-   uint8_t       channel;   
-   uint32_t      entry,
-                 uptimeSeconds;
-   time_t        timestamp;
-   bool          timestampValid;
+enum class SwitchLogEvent : uint8_t {
+   OFF,
+   ON,
+   LOCK,
+   UNLOCK
+};
+
+enum class SwitchLogSource : uint8_t {
+   GROUP_ADDRESS,
+   BUTTON,
+   ON_BY_LOCK,
+   ON_BY_UNLOCK,
+   OFF_BY_LOCK,
+   OFF_BY_UNLOCK,
+   AUTO_OFF_TIMER,
+   AUTO_UNLOCK_TIMER,
+   WEBSERVER
+};
+
+struct SwitchLogEntry {
+   const uint8_t   *ga;
+   uint32_t        entry,
+                   uptimeSeconds;
+   time_t          timestamp;
+   uint8_t         channel;   
+   SwitchLogEvent  event;
+   SwitchLogSource source;
+   bool            timestampValid;
 } switchLogRingbuffer[LOG_SIZE];
 
 
@@ -356,7 +368,7 @@ void setup() {
 
 void onWifiConnected(const WiFiEventStationModeConnected& event) {
    wifiState = WifiState::Connected;
-   logConnectionEvent(LOG_WLAN_CONNECTED);
+   logConnectionEvent(ConnectionLogEvent::WLAN_CONNECTED);
    
    uint8_t *bssid = WiFi.BSSID();
    char buffer[18];
@@ -374,7 +386,7 @@ void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
    wifiCurrentConnectionAttempts = 0;
    
    IPAddress ip = WiFi.localIP();
-   logConnectionEvent(LOG_WLAN_DHCP_COMPLETED);
+   logConnectionEvent(ConnectionLogEvent::WLAN_DHCP_COMPLETED);
    Serial.print("IP-Adresse: ");
    Serial.println(ip);
    
@@ -406,8 +418,8 @@ void onWifiDhcpTimeout() {
    wifiState = WifiState::Disconnected;
    wifiDisconnectedMillis = currentMillis;
    WiFi.disconnect();
-   logConnectionEvent(LOG_WLAN_DHCP_TIMEOUT);
-   Serial.println(LOG_WLAN_DHCP_TIMEOUT);
+   logConnectionEvent(ConnectionLogEvent::WLAN_DHCP_TIMEOUT);
+   Serial.println(getConnectionLogEventString(ConnectionLogEvent::WLAN_DHCP_TIMEOUT));
 }
 
 
@@ -416,10 +428,10 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
    wifiDisconnectedMillis = currentMillis;  
    wifiDisconnections++;
    resetKnxdConnection();
-   logConnectionEvent(LOG_WLAN_DISCONNECTED); 
-   Serial.print(LOG_WLAN_DISCONNECTED);
+   logConnectionEvent(ConnectionLogEvent::WLAN_DISCONNECTED, event.reason); 
+   Serial.print(getConnectionLogEventString(ConnectionLogEvent::WLAN_DISCONNECTED));
    Serial.print(", Grund: ");
-   Serial.print(event.reason);
+   Serial.print(getWiFiDisconnectReasonString(event.reason));
    Serial.print(" (");
    Serial.print(wifiCurrentConnectionAttempts);
    Serial.println(". Versuch)");
@@ -473,7 +485,7 @@ void loop() {
          Serial.println(" has expired!");
          // Set to false even if the channel cannot be switched off due to an active lock.
          autoOffTimerActive[ch] = false;
-         switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, SWITCH_LOG_AUTO_OFF_TIMER, 0);
+         switchRelay(ch, false, AUTO_OFF_TIMER_OVERRIDES_LOCK, SwitchLogSource::AUTO_OFF_TIMER, 0);
       }
 
       // Check if a channel has to be unlocked by a timer
@@ -482,7 +494,7 @@ void loop() {
          Serial.print(ch + 1);
          Serial.println(" has expired!");
          autoUnlockTimerActive[ch] = false;
-         lockRelay(ch, false, SWITCH_LOG_AUTO_UNLOCK_TIMER, 0);
+         lockRelay(ch, false, SwitchLogSource::AUTO_UNLOCK_TIMER, 0);
       }
    }
    
@@ -493,7 +505,7 @@ void loop() {
          wifiConnectionInitiatedMillis = currentMillis;
          wifiCurrentConnectionAttempts++;
          WiFi.begin(SSID, PASSWORD);
-         logConnectionEvent(LOG_WLAN_CONNECTION_INITIATED);
+         logConnectionEvent(ConnectionLogEvent::WLAN_CONNECTION_INITIATED);
          Serial.print("Verbinde mit WLAN '");
          Serial.print(SSID);
          Serial.println("'");   
@@ -504,8 +516,8 @@ void loop() {
          wifiState = WifiState::Disconnected;
          wifiDisconnectedMillis = currentMillis;
          WiFi.disconnect();
-         logConnectionEvent(LOG_WLAN_CONNECTION_TIMEOUT);
-         Serial.println(LOG_WLAN_CONNECTION_TIMEOUT);
+         logConnectionEvent(ConnectionLogEvent::WLAN_CONNECTION_TIMEOUT);
+         Serial.println(getConnectionLogEventString(ConnectionLogEvent::WLAN_CONNECTION_TIMEOUT));
       }
    }
    
@@ -545,7 +557,7 @@ void knxLoop(){
    // Die Verbindung zum knxd wurde unterbrochen
    else if (!knxdClient.connected()){
       Serial.println("Die Verbindung zum knxd wurde getrennt.");      
-      logConnectionEvent(LOG_KNXD_DISCONNECTED);
+      logConnectionEvent(ConnectionLogEvent::KNXD_DISCONNECTED);
       knxdDisconnections++;
       resetKnxdConnection();
    }
@@ -555,7 +567,7 @@ void knxLoop(){
       Serial.print("Der Verbindungsaufbau zum knxd wurde nicht innerhalb von ");
       Serial.print(CONNECTION_CONFIRMATION_TIMEOUT_MS);
       Serial.println(" ms bestätigt.");
-      logConnectionEvent(LOG_KNXD_CONNECTION_HANDSHAKE_TIMEOUT);
+      logConnectionEvent(ConnectionLogEvent::KNXD_CONNECTION_HANDSHAKE_TIMEOUT);
       knxdConnectionHandshakeTimeouts++;
       resetKnxdConnection();
    }
@@ -565,7 +577,7 @@ void knxLoop(){
       Serial.print("Timeout: No telegram received during ");
       Serial.print(MISSING_TELEGRAM_TIMEOUT_MIN);
       Serial.println(" minutes");
-      logConnectionEvent(LOG_MISSING_TELEGRAM_TIMEOUT);
+      logConnectionEvent(ConnectionLogEvent::MISSING_TELEGRAM_TIMEOUT);
       missingTelegramTimeouts++;
       resetKnxdConnection();
    }
@@ -586,7 +598,7 @@ void knxLoop(){
          // Prüfen, ob der initiale Verbindungsaufbau korrekt bestätigt wurde      
          if (!knxdConnectionConfirmed && messageLength == 2 && messageResponse[0] == KNXD_GROUP_CONNECTION_REQUEST[2] && messageResponse[1] == KNXD_GROUP_CONNECTION_REQUEST[3]){
             Serial.println("EIBD/KNXD Verbindung hergestellt");            
-            logConnectionEvent(LOG_KNXD_CONNECTION_CONFIRMED);
+            logConnectionEvent(ConnectionLogEvent::KNXD_CONNECTION_CONFIRMED);
             knxdConnectionConfirmed = true;   
             knxdConnectionConfirmedCount++;
             
@@ -642,7 +654,7 @@ void knxLoop(){
                      if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0
                          && messageResponse[4] == (GA_SWITCH[0][i][0] << 3) + GA_SWITCH[0][i][1]
                          && messageResponse[5] == GA_SWITCH[0][i][2]){
-                         switchRelay(ch, messageResponse[7] & 0x0F, false, 0, &GA_SWITCH[ch][i][0]);
+                         switchRelay(ch, messageResponse[7] & 0x0F, false, SwitchLogSource::GROUP_ADDRESS, &GA_SWITCH[ch][i][0]);
                      }
                   }
                   for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
@@ -650,7 +662,7 @@ void knxLoop(){
                      if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0
                          && messageResponse[4] == (GA_LOCK[0][i][0] << 3) + GA_LOCK[0][i][1]
                          && messageResponse[5] == GA_LOCK[0][i][2]){
-                         lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch], 0, &GA_LOCK[ch][i][0]);
+                         lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch], SwitchLogSource::GROUP_ADDRESS, &GA_LOCK[ch][i][0]);
                      }
                   }
                }
@@ -753,7 +765,7 @@ void knxLoop(){
          Serial.print("Timeout: Incomplete received telegram after ");
          Serial.print(INCOMPLETE_TELEGRAM_TIMEOUT_MS);
          Serial.println(" ms");
-         logConnectionEvent(LOG_INCOMPLETE_TELEGRAM_TIMEOUT);
+         logConnectionEvent(ConnectionLogEvent::INCOMPLETE_TELEGRAM_TIMEOUT);
          incompleteTelegramTimeouts++;
          resetKnxdConnection();
       }
@@ -775,7 +787,7 @@ bool connectToKnxd(){
       knxdConnectionInitiated       = true;
       knxdConnectionInitiatedMillis = currentMillis;
       knxdConnectionInitiatedCount++;      
-      logConnectionEvent(LOG_KNXD_CONNECTION_INITIATED);
+      logConnectionEvent(ConnectionLogEvent::KNXD_CONNECTION_INITIATED);
       
       return knxdClient.connected();
    }
@@ -809,9 +821,9 @@ void checkButton(uint8_t ch){
       else if (buttonDebouncedState[ch] == !BUTTON_INVERTED && (currentMillis - buttonDebounceMillis[ch]) >= BUTTON_DEBOUNCING_TIME_MS) {
          buttonDebouncedState[ch] = BUTTON_INVERTED;
          if (BUTTON_TOGGLE)
-            switchRelay(ch, !relayStatus[ch], false, SWITCH_LOG_BUTTON, 0);
+            switchRelay(ch, !relayStatus[ch], false, SwitchLogSource::BUTTON, 0);
          else
-            switchRelay(ch, true, false, SWITCH_LOG_BUTTON, 0);
+            switchRelay(ch, true, false, SwitchLogSource::BUTTON, 0);
       }
       
       buttonLastState[ch] = BUTTON_INVERTED;
@@ -826,7 +838,7 @@ void checkButton(uint8_t ch){
          buttonDebouncedState[ch] = !BUTTON_INVERTED;
          // Switch relay off if button is not in toggle mode
          if (!BUTTON_TOGGLE && relayStatus[ch])
-            switchRelay(ch, false, false, SWITCH_LOG_BUTTON, 0);
+            switchRelay(ch, false, false, SwitchLogSource::BUTTON, 0);
       }
       
       buttonLastState[ch] = !BUTTON_INVERTED;
@@ -962,7 +974,7 @@ void ledBlink(){
 #endif
 
 
-void switchRelay(const uint8_t ch, const bool on, const bool overrideLock, const char *source, const uint8_t *ga){
+void switchRelay(const uint8_t ch, const bool on, const bool overrideLock, SwitchLogSource source, const uint8_t *ga){
    if (ch >= CHANNELS){
       Serial.print("Ungültiger Kanal: ");
       Serial.println(ch + 1);
@@ -981,14 +993,14 @@ void switchRelay(const uint8_t ch, const bool on, const bool overrideLock, const
                autoOffTimerStartMillis[ch] = currentMillis;
                autoOffTimerActive[ch] = true;
             }
-            logSwitchEvent(ch, SWITCH_LOG_ON, source, ga);
+            logSwitchEvent(ch, SwitchLogEvent::ON, source, ga);
             Serial.print("Kanal ");
             Serial.print(ch + 1);
             Serial.println(" wird eingeschaltet");
          }
          else{
             autoOffTimerActive[ch] = false;
-            logSwitchEvent(ch, SWITCH_LOG_OFF, source, ga);
+            logSwitchEvent(ch, SwitchLogEvent::OFF, source, ga);
             Serial.print("Kanal ");
             Serial.print(ch + 1);
             Serial.println(" wird ausgeschaltet");
@@ -1009,7 +1021,7 @@ void switchRelay(const uint8_t ch, const bool on, const bool overrideLock, const
 }
 
 
-void lockRelay(const uint8_t ch, const bool lock, const char *source, const uint8_t *ga){
+void lockRelay(const uint8_t ch, const bool lock, SwitchLogSource source, const uint8_t *ga){
    if (ch >= CHANNELS){
       Serial.print("Ungültiger Kanal: ");
       Serial.println(ch + 1);
@@ -1019,7 +1031,7 @@ void lockRelay(const uint8_t ch, const bool lock, const char *source, const uint
          Serial.print("Kanal ");
          Serial.print(ch + 1);
          Serial.println(" wird gesperrt!");
-         logSwitchEvent(ch, SWITCH_LOG_LOCK, source, ga);
+         logSwitchEvent(ch, SwitchLogEvent::LOCK, source, ga);
          
          if (AUTO_UNLOCK_TIMER_S[ch] > 0){
             autoUnlockTimerStartMillis[ch] = currentMillis;
@@ -1027,9 +1039,9 @@ void lockRelay(const uint8_t ch, const bool lock, const char *source, const uint
          }
          
          if (SWITCH_OFF_WHEN_LOCKED[ch])
-            switchRelay(ch, false, false, SWITCH_LOG_ON_BY_LOCK, 0);
+            switchRelay(ch, false, false, SwitchLogSource::OFF_BY_LOCK, 0);
          else if (SWITCH_ON_WHEN_LOCKED[ch])
-            switchRelay(ch, true, false, SWITCH_LOG_ON_BY_LOCK, 0);
+            switchRelay(ch, true, false, SwitchLogSource::ON_BY_LOCK, 0);
          
          lockActive[ch] = true;         
       }                  
@@ -1040,12 +1052,12 @@ void lockRelay(const uint8_t ch, const bool lock, const char *source, const uint
          Serial.print("Kanal ");
          Serial.print(ch + 1);
          Serial.println(" wird entsperrt!");
-         logSwitchEvent(ch, SWITCH_LOG_UNLOCK, source, ga);
+         logSwitchEvent(ch, SwitchLogEvent::UNLOCK, source, ga);
          
          if (SWITCH_OFF_WHEN_UNLOCKED[ch])
-            switchRelay(ch, false, false, SWITCH_LOG_OFF_BY_UNLOCK, 0);
+            switchRelay(ch, false, false, SwitchLogSource::OFF_BY_UNLOCK, 0);
          else if (SWITCH_ON_WHEN_UNLOCKED[ch])
-            switchRelay(ch, true, false, SWITCH_LOG_OFF_BY_UNLOCK, 0);
+            switchRelay(ch, true, false, SwitchLogSource::ON_BY_UNLOCK, 0);
       }
    }
 }
@@ -1176,26 +1188,129 @@ float decodeDpt9(uint16_t data) {
 }
 
 
-void logConnectionEvent(const char* message){
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].entry          = connectionLogEntries;
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].uptimeSeconds  = getUptimeSeconds();
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timestamp      = now();
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].timestampValid = dateValid && timeValid;
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].wlanChannel    = WiFi.channel();
-   connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].message        = message;
-   memcpy(connectionLogRingbuffer[connectionLogEntries % LOG_SIZE].wlanBssid, WiFi.BSSID(), 6);
+void logConnectionEvent(ConnectionLogEvent event, uint8_t wiFiDisconnectReason){
+   auto& clr = connectionLogRingbuffer[connectionLogEntries % LOG_SIZE];
+
+   clr.entry                = connectionLogEntries;
+   clr.uptimeSeconds        = getUptimeSeconds();
+   clr.timestamp            = now();
+   clr.timestampValid       = dateValid && timeValid;
+   clr.wlanChannel          = WiFi.channel();
+   clr.event                = event;
+   clr.wiFiDisconnectReason = wiFiDisconnectReason;
+   memcpy(clr.wlanBssid, WiFi.BSSID(), 6);
    connectionLogEntries++;
 }
 
 
-void logSwitchEvent(const uint8_t ch, const char* type, const char* message, const uint8_t *ga){
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].entry          = switchLogEntries;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].uptimeSeconds  = getUptimeSeconds();
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timestamp      = now();
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].timestampValid = dateValid && timeValid;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].message        = message;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].channel        = ch;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].type           = type;
-   switchLogRingbuffer[switchLogEntries % LOG_SIZE].ga             = ga;
+void logConnectionEvent(ConnectionLogEvent event){
+   logConnectionEvent(event, 0);
+}
+
+
+void logSwitchEvent(const uint8_t ch, SwitchLogEvent event, SwitchLogSource source, const uint8_t *ga){
+   auto& slr = switchLogRingbuffer[switchLogEntries % LOG_SIZE];
+
+   slr.entry          = switchLogEntries;
+   slr.uptimeSeconds  = getUptimeSeconds();
+   slr.timestamp      = now();
+   slr.timestampValid = dateValid && timeValid;
+   slr.event          = event;
+   slr.channel        = ch;
+   slr.source         = source;
+   slr.ga             = ga;
    switchLogEntries++;
 }
+
+
+const char* getWiFiDisconnectReasonString(uint8_t reason) {
+   switch (reason) {
+      case WIFI_DISCONNECT_REASON_UNSPECIFIED:              return "Unspecified";
+      case WIFI_DISCONNECT_REASON_AUTH_EXPIRE:              return "Auth expired";
+      case WIFI_DISCONNECT_REASON_AUTH_LEAVE:               return "Auth leave";
+      case WIFI_DISCONNECT_REASON_ASSOC_EXPIRE:             return "Association expired";
+      case WIFI_DISCONNECT_REASON_ASSOC_TOOMANY:            return "Too many associations";
+      case WIFI_DISCONNECT_REASON_NOT_AUTHED:               return "Not authenticated";
+      case WIFI_DISCONNECT_REASON_NOT_ASSOCED:              return "Not associated";
+      case WIFI_DISCONNECT_REASON_ASSOC_LEAVE:              return "Association leave";
+      case WIFI_DISCONNECT_REASON_ASSOC_NOT_AUTHED:         return "Association not authenticated";
+      case WIFI_DISCONNECT_REASON_DISASSOC_PWRCAP_BAD:      return "Power capability bad";
+      case WIFI_DISCONNECT_REASON_DISASSOC_SUPCHAN_BAD:     return "Supported channel bad";
+      case WIFI_DISCONNECT_REASON_IE_INVALID:               return "Invalid IE";
+      case WIFI_DISCONNECT_REASON_MIC_FAILURE:              return "MIC failure";
+      case WIFI_DISCONNECT_REASON_4WAY_HANDSHAKE_TIMEOUT:   return "4-way handshake timeout";
+      case WIFI_DISCONNECT_REASON_GROUP_KEY_UPDATE_TIMEOUT: return "Group key timeout";
+      case WIFI_DISCONNECT_REASON_IE_IN_4WAY_DIFFERS:       return "IE mismatch in handshake";
+      case WIFI_DISCONNECT_REASON_GROUP_CIPHER_INVALID:     return "Group cipher invalid";
+      case WIFI_DISCONNECT_REASON_PAIRWISE_CIPHER_INVALID:  return "Pairwise cipher invalid";
+      case WIFI_DISCONNECT_REASON_AKMP_INVALID:             return "AKMP invalid";
+      case WIFI_DISCONNECT_REASON_UNSUPP_RSN_IE_VERSION:    return "Unsupported RSN IE";
+      case WIFI_DISCONNECT_REASON_INVALID_RSN_IE_CAP:       return "Invalid RSN capabilities";
+      case WIFI_DISCONNECT_REASON_802_1X_AUTH_FAILED:       return "802.1X auth failed";
+      case WIFI_DISCONNECT_REASON_CIPHER_SUITE_REJECTED:    return "Cipher rejected";
+      case WIFI_DISCONNECT_REASON_BEACON_TIMEOUT:           return "Beacon timeout";
+      case WIFI_DISCONNECT_REASON_NO_AP_FOUND:              return "No AP found";
+      case WIFI_DISCONNECT_REASON_AUTH_FAIL:                return "Auth failed";
+      case WIFI_DISCONNECT_REASON_ASSOC_FAIL:               return "Association failed";
+      case WIFI_DISCONNECT_REASON_HANDSHAKE_TIMEOUT:        return "Handshake timeout";
+      default:                                              return "Unknown reason";
+  }
+}
+
+
+const char* getConnectionLogEventString(ConnectionLogEvent event) {
+   switch (event) {
+      case ConnectionLogEvent::WLAN_CONNECTION_INITIATED:         return "WLAN-Verbindung initiiert";
+      case ConnectionLogEvent::WLAN_CONNECTED:                    return "WLAN-Verbindung hergestellt";
+      case ConnectionLogEvent::WLAN_DHCP_COMPLETED:               return "IP-Adresse per DHCP erhalten";
+      case ConnectionLogEvent::WLAN_DISCONNECTED:                 return "WLAN-Verbindung getrennt";
+      case ConnectionLogEvent::WLAN_CONNECTION_TIMEOUT:           return "Zeitüberschreitungen beim Aufbau der WLAN-Verbindung";
+      case ConnectionLogEvent::WLAN_DHCP_TIMEOUT:                 return "DHCP-Zeitüberschreitungen";
+      case ConnectionLogEvent::KNXD_CONNECTION_INITIATED:         return "Initiale Verbindung zum knxd hergestellt";
+      case ConnectionLogEvent::KNXD_CONNECTION_HANDSHAKE_TIMEOUT: return "Zeitüberschreitungen bei der Verbindungsbestätigung durch den knxd";
+      case ConnectionLogEvent::KNXD_CONNECTION_CONFIRMED:         return "Verbindung vom knxd bestätigt";
+      case ConnectionLogEvent::KNXD_DISCONNECTED:                 return "Verbindung zum knxd getrennt";
+      case ConnectionLogEvent::MISSING_TELEGRAM_TIMEOUT:          return "Verbindungsabbruch wegen Zeitüberschreitung zwischen zwei Telegrammen";
+      case ConnectionLogEvent::INCOMPLETE_TELEGRAM_TIMEOUT:       return "Verbindungsabbruch wegen unvollständig empfangenem Telegramm";
+      default:                                                    return "Invalid";
+  }
+}
+
+
+const char* getSwitchLogEventString(SwitchLogEvent event) {
+   switch (event) {
+      case SwitchLogEvent::OFF:    return "Ausgeschaltet";
+      case SwitchLogEvent::ON:     return "Eingeschaltet";
+      case SwitchLogEvent::LOCK:   return "Gesperrt";
+      case SwitchLogEvent::UNLOCK: return "Entsperrt";
+      default:                     return "Invalid";
+  }
+}
+
+
+const char* getSwitchLogSourceString(SwitchLogSource source) {
+   switch (source) {
+      case SwitchLogSource::GROUP_ADDRESS:     return "GA";
+      case SwitchLogSource::BUTTON:            return "Taster";
+      case SwitchLogSource::ON_BY_LOCK:        // fall-through
+      case SwitchLogSource::OFF_BY_LOCK:       return "Sperrautomatik";
+      case SwitchLogSource::ON_BY_UNLOCK:      // fall-through
+      case SwitchLogSource::OFF_BY_UNLOCK:     return "Entsperrautomatik";
+      case SwitchLogSource::AUTO_OFF_TIMER:    return "Zeitschalter";
+      case SwitchLogSource::AUTO_UNLOCK_TIMER: return "Zeitschalter";
+      case SwitchLogSource::WEBSERVER:         return "Webserver";
+      default:                                 return "Invalid";
+  }
+}
+
+#if NTFY_ENABLE == true
+   bool ntfySendMessage(const char* message) {
+      return ntfy.enqueue(HOST_NAME, message);
+   }
+#else
+   bool ntfySendMessage(const char* message) {
+      Serial.print("ntfy ist deaktiviert, die Nachricht kann nicht gesendet werden: ");
+      Serial.println(message);
+      return false;
+   }
+#endif
