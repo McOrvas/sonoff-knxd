@@ -1,4 +1,4 @@
-static const char HTML_FOOTER[] = "</body>\n</html>";
+static const char *HTML_FOOTER = "</body>\n</html>";
 
 void sendHtmlHeader(const char* refreshRate, const char* refreshUrl, const char* bodyId){
    webServer.sendContent(
@@ -188,8 +188,8 @@ void setupWebServer(){
          "<tr><td>Schaltstatus</td>"
          "<td><a href=\"ch1/toggle\" "
       );
-      static const char relayOnText[]  = "class=\"green\">eingeschaltet</a></td>";
-      static const char relayOffText[] = "class=\"red\">ausgeschaltet</a></td>";
+      static const char *relayOnText  = "class=\"green\">eingeschaltet</a></td>";
+      static const char *relayOffText = "class=\"red\">ausgeschaltet</a></td>";
       webServer.sendContent(relayStatus[0] ? relayOnText : relayOffText);
       
       if (CHANNELS > 1) {
@@ -205,8 +205,8 @@ void setupWebServer(){
          webServer.sendContent(relayStatus[3] ? relayOnText : relayOffText);         
       }
 
-      static const char relayLockedText[]   = "class=\"red\">gesperrt</a></td>";
-      static const char relayUnlockedText[] = "class=\"green\">freigegeben</a></td>";
+      static const char *relayLockedText   = "class=\"red\">gesperrt</a></td>";
+      static const char *relayUnlockedText = "class=\"green\">freigegeben</a></td>";
       webServer.sendContent(
          "</tr>\n"
          

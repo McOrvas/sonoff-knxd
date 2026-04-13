@@ -66,7 +66,7 @@
  * *************************
  */
 
-static const char SOFTWARE_VERSION[]            = "2026-04-13";
+static const char *SOFTWARE_VERSION             = "2026-04-13";
 
 const uint8_t  GA_SWITCH_COUNT                  = sizeof(GA_SWITCH[0]) / 3,
                GA_LOCK_COUNT                    = sizeof(GA_LOCK[0]) / 3,
