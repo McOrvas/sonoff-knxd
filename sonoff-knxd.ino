@@ -652,16 +652,16 @@ void knxLoop(){
                   for (uint8_t i=0; i<GA_SWITCH_COUNT; i++){
                      // Schalten
                      if (GA_SWITCH[ch][i][0] + GA_SWITCH[ch][i][1] + GA_SWITCH[ch][i][2] > 0
-                         && messageResponse[4] == (GA_SWITCH[0][i][0] << 3) + GA_SWITCH[0][i][1]
-                         && messageResponse[5] == GA_SWITCH[0][i][2]){
+                         && messageResponse[4] == (GA_SWITCH[ch][i][0] << 3) + GA_SWITCH[ch][i][1]
+                         && messageResponse[5] == GA_SWITCH[ch][i][2]){
                          switchRelay(ch, messageResponse[7] & 0x0F, false, SwitchLogSource::GROUP_ADDRESS, &GA_SWITCH[ch][i][0]);
                      }
                   }
                   for (uint8_t i=0; i<GA_LOCK_COUNT; i++){
                      // Sperren
                      if (GA_LOCK[ch][i][0] + GA_LOCK[ch][i][1] + GA_LOCK[ch][i][2] > 0
-                         && messageResponse[4] == (GA_LOCK[0][i][0] << 3) + GA_LOCK[0][i][1]
-                         && messageResponse[5] == GA_LOCK[0][i][2]){
+                         && messageResponse[4] == (GA_LOCK[ch][i][0] << 3) + GA_LOCK[ch][i][1]
+                         && messageResponse[5] == GA_LOCK[ch][i][2]){
                          lockRelay(ch, (messageResponse[7] & 0x0F) ^ LOCK_INVERTED[ch], SwitchLogSource::GROUP_ADDRESS, &GA_LOCK[ch][i][0]);
                      }
                   }
