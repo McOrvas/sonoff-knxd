@@ -146,7 +146,7 @@ void sendHtmlHeader(const char* refreshRate, const char* refreshUrl, const char*
    webServer.sendContent(HOST_DESCRIPTION);
    webServer.sendContent(
       ")</a></H1>\n"      
-      "<a href=\"maintenance\" title=\"Ger&auml;tewartung\" "
+      "<a href=\"maintenance\" title=\"Gerätewartung\" "
    );
    webServer.sendContent(knxdConnectionConfirmed
          ? "class=\"green\">Das Modul ist mit dem knxd verbunden!"
@@ -156,7 +156,7 @@ void sendHtmlHeader(const char* refreshRate, const char* refreshUrl, const char*
       "</a>\n"
       
       "<p>\n"      
-      "<a class=\"box\" id=\"maintenanceA\"   href=\"maintenance\"   title=\"Ger&auml;tewartung\">Ger&auml;tewartung</a>"
+      "<a class=\"box\" id=\"maintenanceA\"   href=\"maintenance\"   title=\"Gerätewartung\">Gerätewartung</a>"
    );
    if (CHANNELS >= 1) webServer.sendContent(
       "<a class=\"box\" id=\"relayStatusA\"   href=\"relayStatus\"   title=\"Schaltstatus\">Schaltstatus</a>"
@@ -166,7 +166,7 @@ void sendHtmlHeader(const char* refreshRate, const char* refreshUrl, const char*
       "<a class=\"box\" id=\"connectionLogA\" href=\"connectionLog\" title=\"Verbindungsprotokoll\">Verbindungsprotokoll</a>"
    
       #if SCD30_ENABLE == true      
-         "<a class=\"box\" id=\"SCD30A\"         href=\"SCD30\"         title=\"Luftqualit&auml;t\">Luftqualit&auml;t</a>"      
+         "<a class=\"box\" id=\"SCD30A\"         href=\"SCD30\"         title=\"Luftqualität\">Luftqualität</a>"      
       #endif
 
       "\n</p>\n"
@@ -186,7 +186,7 @@ void sendMaintenancePage(){
    webServer.send(200, "text/html", "");
    sendHtmlHeader("60", "/maintenance", "maintenance");
    webServer.sendContent(
-      "<H2>Ger&auml;tewartung</H2>\n"
+      "<H2>Gerätewartung</H2>\n"
       
       "<table>\n"
       "<tr><td>Laufzeit</td>"
@@ -235,7 +235,7 @@ void sendMaintenancePage(){
    sendFormattedUInt(ESP.getHeapFragmentation());
    webServer.sendContent(
       " % fragmentiert)</td></tr>\n"
-      "<tr><td>Aktuelle / maximale Sketch-Gr&ouml;&szlig;e</td>"
+      "<tr><td>Aktuelle / maximale Sketch-Größe</td>"
       "<td>"
    );
 
@@ -250,7 +250,7 @@ void sendMaintenancePage(){
    sendFormattedUInt(sketchPercentage);
    webServer.sendContent(
       " % verwendet)</td></tr>\n"
-      "<tr><td>Flash-Gr&ouml;&szlig;e / -Geschwindigkeit</td>"
+      "<tr><td>Flash-Größe / -Geschwindigkeit</td>"
       "<td>" 
    );
    sendFormattedUInt(ESP.getFlashChipSize());
@@ -269,7 +269,7 @@ void sendMaintenancePage(){
       "</table>\n"
 
       "<p><a href=\"update\" title=\"Firmware aktualisieren\" class=\"box\">Firmware aktualisieren</a>"
-      "&nbsp;<a href=\"reboot\" title=\"Ger&auml;t neu starten\" class=\"box\">Ger&auml;t neu starten</a></p>\n"
+      "&nbsp;<a href=\"reboot\" title=\"Gerät neu starten\" class=\"box\">Gerät neu starten</a></p>\n"
 
       "<H2>Netzwerk</H2>\n"
       
@@ -428,7 +428,7 @@ void sendMaintenancePage(){
    sendFormattedUInt(knxdConnectionInitiatedCount);
    webServer.sendContent(
          "</td></tr>\n"
-      "<tr><td>Zeit&uuml;berschreitungen bei der Verbindungsbest&auml;tigung durch den knxd ("
+      "<tr><td>Zeitüberschreitungen bei der Verbindungsbestätigung durch den knxd ("
    );
    sendFormattedUInt(CONNECTION_CONFIRMATION_TIMEOUT_MS);
    webServer.sendContent(
@@ -438,7 +438,7 @@ void sendMaintenancePage(){
    sendFormattedUInt(knxdConnectionHandshakeTimeouts);
    webServer.sendContent(
          "</td></tr>\n"
-      "<tr><td>Vom knxd best&auml;tigte Verbindungen</td>"
+      "<tr><td>Vom knxd bestätigte Verbindungen</td>"
       "<td>"
    );
    sendFormattedUInt(knxdConnectionConfirmedCount);
@@ -446,7 +446,7 @@ void sendMaintenancePage(){
          "</td></tr>\n"         
       
       "<tr><th colspan=\"2\">Trennung bestehender Verbindungen zum knxd</th></tr>\n"
-      "<tr><td>Verbindungsabbr&uuml;che wegen unvollständig empfangener Telegramme ("
+      "<tr><td>Verbindungsabbrüche wegen unvollständig empfangener Telegramme ("
    );
    sendInt(INCOMPLETE_TELEGRAM_TIMEOUT_MS);
    webServer.sendContent(
@@ -456,7 +456,7 @@ void sendMaintenancePage(){
    sendFormattedUInt(incompleteTelegramTimeouts);
    webServer.sendContent(
          "</td></tr>\n"
-      "<tr><td>Verbindungsabbr&uuml;che wegen Zeit&uuml;berschreitung zwischen zwei Telegrammen ("
+      "<tr><td>Verbindungsabbrüche wegen Zeitüberschreitung zwischen zwei Telegrammen ("
    );
    sendInt(MISSING_TELEGRAM_TIMEOUT_MIN);
    webServer.sendContent(
@@ -466,13 +466,13 @@ void sendMaintenancePage(){
    sendFormattedUInt(missingTelegramTimeouts);
    webServer.sendContent(
       "</td></tr>\n"
-      "<tr><td>Verbindungsabbr&uuml;che zum WLAN</td>"
+      "<tr><td>Verbindungsabbrüche zum WLAN</td>"
       "<td>"
    );
    sendFormattedUInt(wifiDisconnections);
    webServer.sendContent(
          "</td></tr>\n"
-      "<tr><td>Sonstige Verbindungsabbr&uuml;che zum knxd</td>"
+      "<tr><td>Sonstige Verbindungsabbrüche zum knxd</td>"
       "<td>"
    );
    sendFormattedUInt(knxdDisconnections);
@@ -798,7 +798,7 @@ void sendAirQualityPage(){
 
       if (airSensorSCD30Connected && !airSensorSCD30Stuck){
          webServer.sendContent(
-            "<H2>Luftqualit&auml;t</H2>\n"
+            "<H2>Luftqualität</H2>\n"
          
             "<table>\n"
             
@@ -808,7 +808,7 @@ void sendAirQualityPage(){
          );
          sendFloat(airTemperature);
          webServer.sendContent( 
-               " &deg;C</td>"
+               " °C</td>"
             "</tr>\n"
             
             "<tr>"
@@ -835,7 +835,7 @@ void sendAirQualityPage(){
             "<p>Hier kann der Sensor auf ");
          sendUInt(AIR_SENSOR_CO2_CALIBRATION_PPM);
          webServer.sendContent(
-               " ppm kalibriert werden. Daf&uuml;r muss er seit mind. 2 Minuten von frischer Luft umgeben sein!</p>\n"
+               " ppm kalibriert werden. Dafür muss er seit mind. 2 Minuten von frischer Luft umgeben sein!</p>\n"
             "<a href=\"SCD30_Calibration\" title=\"SCD30 kalibrieren\"><button>Kalibrierung starten</button></a>"
          );
       }
@@ -865,7 +865,7 @@ void sendSCD30CalibrationPage(){
       webServer.sendContent(            
          "<H2>SCD30 kalibrieren</H2>\n"
          "Kalibrierung abgeschlossen!"
-         "<p><a href=\"SCD30\" title=\"Zur&uuml;ck\">Zur&uuml;ck</a></p>\n"
+         "<p><a href=\"SCD30\" title=\"Zurück\">Zurück</a></p>\n"
       );
       webServer.sendContent(HTML_FOOTER);
    #else
