@@ -92,7 +92,7 @@ void sendGATableCell(const uint8_t ga[][3], const uint8_t gaCount){
 * *** HTML header ***
 * *******************
 */
-void sendHtmlHeader(const char* refreshRate, const char* refreshUrl, const char* bodyId){
+void sendHtmlHeader(const char* bodyId, const char* refreshRate, const char* refreshUrl = nullptr){
    webServer.sendContent(
       "<!DOCTYPE HTML>\n"
       "<html lang=\"de\">\n"
@@ -101,8 +101,10 @@ void sendHtmlHeader(const char* refreshRate, const char* refreshUrl, const char*
          "<meta http-equiv=\"refresh\" content=\"" 
    );
    webServer.sendContent(refreshRate);
-   webServer.sendContent("; URL=");
-   webServer.sendContent(refreshUrl);
+   if (refreshUrl != nullptr){
+      webServer.sendContent("; URL=");
+      webServer.sendContent(refreshUrl);
+   }
    webServer.sendContent(
          "\">\n"
          "<title>"
@@ -184,7 +186,7 @@ void sendMaintenancePage(){
 
    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    webServer.send(200, "text/html", "");
-   sendHtmlHeader("60", "/maintenance", "maintenance");
+   sendHtmlHeader("maintenance", "60");
    webServer.sendContent(
       "<H2>Gerätewartung</H2>\n"
       
@@ -484,7 +486,7 @@ void sendMaintenancePage(){
       "<td>"
    );
    sendFormattedUInt(receivedTelegrams);
-   webServer.sendContent(" (&#8960; ");
+   webServer.sendContent(" (⌀ ");
    sendFloat(receivedTelegrams / (float) getUptimeSeconds());
    webServer.sendContent(" / s)</td></tr>\n");
 
@@ -535,7 +537,7 @@ void sendMaintenancePage(){
 void sendRelayStatusPage(){
    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    webServer.send(200, "text/html", "");
-   sendHtmlHeader("15", "/relayStatus", "relayStatus");
+   sendHtmlHeader("relayStatus", "15");
    webServer.sendContent(
       "<H2>Schaltstatus</H2>\n"
       
@@ -559,7 +561,7 @@ void sendRelayStatusPage(){
    
    if (CHANNELS >= 1) {
       webServer.sendContent("<td><a href=\"ch1/toggle\" ");
-      webServer.sendContent(relayStatus[1] ? relayOnText : relayOffText);         
+      webServer.sendContent(relayStatus[0] ? relayOnText : relayOffText);         
    }
    else {
       webServer.sendContent("<td>-</td>");
@@ -587,7 +589,7 @@ void sendRelayStatusPage(){
    
    if (CHANNELS >= 1) {
       webServer.sendContent("<td><a href=\"ch1/toggleLock\" ");
-      webServer.sendContent(lockActive[1] ? relayLockedText : relayUnlockedText);         
+      webServer.sendContent(lockActive[0] ? relayLockedText : relayUnlockedText);         
    }
    else {
       webServer.sendContent("<td>-</td>");
@@ -624,7 +626,7 @@ void sendSwitchLogPage(){
 
    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    webServer.send(200, "text/html", "");
-   sendHtmlHeader("60", "/switchLog", "switchLog");
+   sendHtmlHeader("switchLog", "60");
 
    webServer.sendContent(
       "<H2>Schaltprotokoll</H2>\n"
@@ -712,7 +714,7 @@ void sendConnectionLogPage(){
 
    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    webServer.send(200, "text/html", "");
-   sendHtmlHeader("60", "/connectionLog", "connectionLog");
+   sendHtmlHeader("connectionLog", "60");
 
    webServer.sendContent(
       "<H2>Verbindungsprotokoll</H2>\n"
@@ -794,7 +796,7 @@ void sendAirQualityPage(){
 
       webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
       webServer.send(200, "text/html", "");
-      sendHtmlHeader("60", "/SCD30", "SCD30");
+      sendHtmlHeader("SCD30", "60");
 
       if (airSensorSCD30Connected && !airSensorSCD30Stuck){
          webServer.sendContent(
@@ -861,7 +863,7 @@ void sendSCD30CalibrationPage(){
 
       webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
       webServer.send(200, "text/html", "");
-      sendHtmlHeader("15", "/SCD30", "SCD30");         
+      sendHtmlHeader("SCD30", "15");         
       webServer.sendContent(            
          "<H2>SCD30 kalibrieren</H2>\n"
          "Kalibrierung abgeschlossen!"
@@ -877,7 +879,7 @@ void sendSCD30CalibrationPage(){
 void sendNotFoundPage() {
    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    webServer.send(200, "text/html", "");
-   sendHtmlHeader("5", "/", "notFound");
+   sendHtmlHeader("notFound", "5", "/");
    webServer.sendContent("<H2>Fehler</H2><p>Diese Seite existiert nicht. Automatische Weiterleitung in 5 s oder <a href=\"/\">hier klicken</a>.</p>\n");
    webServer.sendContent(HTML_FOOTER);
 }
@@ -899,148 +901,153 @@ void setupWebServer(){
    * *** Relay switch and lock commands ***
    * **************************************
    */
+
+   static const char *LOCATION     = "Location";
+   static const char *RELAY_STATUS = "/relayStatus";
+   static const char *TEXT_PLAIN   = "text/plain";
+
    webServer.on("/ch1/on", [](){
       switchRelay(0, true, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch2/on", [](){
       switchRelay(1, true, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch3/on", [](){
       switchRelay(2, true, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch4/on", [](){
       switchRelay(3, true, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch1/off", [](){
       switchRelay(0, false, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch2/off", [](){
       switchRelay(1, false, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch3/off", [](){
       switchRelay(2, false, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch4/off", [](){
       switchRelay(3, false, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch1/toggle", [](){
       switchRelay(0, !relayStatus[0], false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch2/toggle", [](){
       switchRelay(1, !relayStatus[1], false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch3/toggle", [](){
       switchRelay(2, !relayStatus[2], false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch4/toggle", [](){
       switchRelay(3, !relayStatus[3], false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch1/lock", [](){
       lockRelay(0, true, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch2/lock", [](){
       lockRelay(1, true, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch3/lock", [](){
       lockRelay(2, true, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch4/lock", [](){
       lockRelay(3, true, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch1/unlock", [](){
       lockRelay(0, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch2/unlock", [](){
       lockRelay(1, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch3/unlock", [](){
       lockRelay(2, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch4/unlock", [](){
       lockRelay(3, false, SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch1/toggleLock", [](){
       lockRelay(0, !lockActive[0], SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch2/toggleLock", [](){
       lockRelay(1, !lockActive[1], SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch3/toggleLock", [](){
       lockRelay(2, !lockActive[2], SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    webServer.on("/ch4/toggleLock", [](){
       lockRelay(3, !lockActive[3], SwitchLogSource::WEBSERVER, 0);
-      webServer.sendHeader("Location", "/", true);
-      webServer.send(302, "text/plain", "");
+      webServer.sendHeader(LOCATION, RELAY_STATUS, true);
+      webServer.send(302, TEXT_PLAIN, "");
    });
    
    /*
@@ -1061,7 +1068,7 @@ void setupWebServer(){
    webServer.on("/reboot", [](){
       webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
       webServer.send(200, "text/html", "");
-      sendHtmlHeader("15", "/", "reboot");
+      sendHtmlHeader("reboot", "15", "/");
 
       webServer.sendContent("<H2>Modul wird neugestartet...</H2>\n");
       webServer.sendContent(HTML_FOOTER);
@@ -1078,7 +1085,7 @@ void setupWebServer(){
    // webServer.on("/telegramtimeout", [](){
    //    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    //    webServer.send(200, "text/html", "");
-   //    sendHtmlHeader("15", "/", "");
+   //    sendHtmlHeader("", "15", "/");
    //    webServer.sendContent("<H2>Telegramm-Timeout!</H2>\n");
    //    webServer.sendContent(HTML_FOOTER);
    //    lastTelegramReceivedMillis = currentMillis - (MISSING_TELEGRAM_TIMEOUT_MIN * 60000);
@@ -1087,7 +1094,7 @@ void setupWebServer(){
    // webServer.on("/disconnectwlan", [](){
    //    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    //    webServer.send(200, "text/html", "");
-   //    sendHtmlHeader("15", "/", "");
+   //    sendHtmlHeader("", "15", "/");
    //    webServer.sendContent("<H2>Trenne WLAN!</H2>\n");
    //    webServer.sendContent(HTML_FOOTER);
    //    WiFi.disconnect();
@@ -1096,7 +1103,7 @@ void setupWebServer(){
    // webServer.on("/disconnectknxd", [](){
    //    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    //    webServer.send(200, "text/html", "");
-   //    sendHtmlHeader("15", "/", "");
+   //    sendHtmlHeader("", "15", "/");
    //    webServer.sendContent("<H2>Trenne KNXD!</H2>\n");
    //    webServer.sendContent(HTML_FOOTER);
    //    knxdClient.stop();
@@ -1105,7 +1112,7 @@ void setupWebServer(){
    // webServer.on("/wlantimeout", [](){
    //    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
    //    webServer.send(200, "text/html", "");
-   //    sendHtmlHeader("15", "/", "");
+   //    sendHtmlHeader("", "15", "/");
    //    webServer.sendContent("<H2>WLAN-Timeout!</H2>\n");
    //    webServer.sendContent(HTML_FOOTER);
    //    wifiState = WifiState::Connected;
