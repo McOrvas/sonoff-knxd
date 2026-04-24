@@ -837,8 +837,8 @@ void sendAirQualityPage(){
             "<p>Hier kann der Sensor auf ");
          sendUInt(AIR_SENSOR_CO2_CALIBRATION_PPM);
          webServer.sendContent(
-               " ppm kalibriert werden. Dafür muss er seit mind. 2 Minuten von frischer Luft umgeben sein!</p>\n"
-            "<a href=\"SCD30_Calibration\" title=\"SCD30 kalibrieren\"><button>Kalibrierung starten</button></a>"
+            " ppm kalibriert werden. Dafür muss er seit mind. 2 Minuten von frischer Luft umgeben sein!</p>\n"
+            "<a href=\"SCD30_Calibration\" title=\"SCD30 kalibrieren\" class=\"box\">Kalibrierung starten</a>\n"
          );
       }
       else {
